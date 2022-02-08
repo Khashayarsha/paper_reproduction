@@ -3,7 +3,7 @@ from scipy import optimize
 from scipy import stats
 import scipy
 import bivariate_poisson
-from score_driver import ScoreDriver
+#from score_driver import ScoreDriver
 import numpy as np
 import pandas as pd
 import os
@@ -11,9 +11,20 @@ import scipy.special
 factorial = scipy.special.factorial
 ncr = scipy.special.comb
 
-data_folder = r".../data/interim"
-print("Expected directory containing data = ", data_path)
-os.chdir(data_path)
+#in:   prepped_data.pkl from preprocess_final.py
+#out:  f1.pkl       the power_vector of the first year, for use in
+#      saves it in ../../data/interim  folder as df_initialized
+
+
+
+
+if os.getcwd().split('\\')[-1] != 'features':
+    os.chdir("./features")
+script_folder = os.getcwd()
+data_folder = r"../../data/interim"
+
+print("Expected directory containing data = ", data_folder)
+os.chdir(data_folder)
 
 def get_first_year(df, test = True):
     if test==True:
@@ -159,7 +170,7 @@ teems = [mapping[i] for i in range(33)]*2
 teems.append('gamma')
 teems.append('delta')
 f1["teams"] = teems
-f1.to_csv("f1_maher_init_2january.csv")
+f1.to_csv("f1_maher_init_24january.csv")
 f1.to_pickle("f1_maher_init.pkl")
 
 f_one = np.zeros_like(df['participants'])
@@ -167,10 +178,12 @@ f_one[:len(f1['f1'])] = f1['f1']
 
 df['f1'] = f_one
 
-print('trying to pickle df_initialized')
+print('trying to pickle df_initialized, saving in data/processed')
+os.chdir('../interim')
 df.to_pickle('df_initialized.pkl')
 print('testing pickling')
 pd.read_pickle("df_initialized.pkl")
 
-print('done producing maher_initialization')
+
+print('done producing maher_initialization, saved in ', os.getcwd())
 # %%

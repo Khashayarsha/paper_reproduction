@@ -4,32 +4,60 @@ import pandas as pd
 import numpy as np
 import bivariate_poisson
 import os
-data_path = r"C:\Users\XHK\Desktop\thesis_code\reproduceLit2017\data"
+data_path = r"../../data/interim"
 print("Expected directory containing data = ", data_path)
 os.chdir(data_path)
+
+# Takes the df_initialized.pkl file with the Maher-initialized vector and runs the score-driven model on it
+# Output is a matrix of f_t vectors, which are all the estimated team-strenghts at time t
+# Output saved in data/processed
+# this matrix can then be used to predict win-probabilities one step ahead. 
+
+
+#get df_initialized.pkl
+
+def get_initialized_data(data_location = data_path, data_type = ".pkl", data_name = "df_initialized" ):
+    if data_type == ".pkl":
+        data_file =  data_name  + data_type
+        print('attempting to retrieve data from: ', data_location)
+        os.chdir(data_location)
+        data = pd.read_pickle(data_file)
+    print("succesfully retrieved data from: ", data_location, "... , data = ", data_file)
+    return data 
+
+
+df = get_initialized_data()
+
 
 
 
 #import preprocess
-team_amount = 33
-f1_size = team_amount * 2
-psi1 = pd.read_csv("f1_maher_init2.csv")
-print("TEST")
-df = pd.read_csv("processed_data2.csv")
-f1 = psi1.iloc[:f1_size]
-gamma_1 = psi1[psi1["teams"] == "gamma"].values
-delta_1 = psi1[psi1["teams"] == "delta"].values
+team_amount = 33     #turn into a   function or do this in pre-process etc
+f1_size = (team_amount * 2) #+2    f_t just consists of the time-varying team atk and def str's. 
+                            # DELTA AND GAMMA ARE NOT TIME VARYING IN THIS MODEL.
+# psi1 = pd.read_csv("f1_maher_init2.csv")
+# print("TEST")
+# df = pd.read_csv("processed_data2.csv")
+f1 = df['f1'][:f1_size]
+lambda_3 = f1.values[-2]  # noemde dit eerst gamma_1, maar is bs
+delta_1 = f1.values[-1]
+mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
+
+unseen_teams = df['absentees'].iloc[0]  #set of teams not playing in first round
+seen_teams = set(df.iloc[0].participants) #set of teams that played in first round (from which Maher init calculated)
 
 
 temp = [df[df["round_labels"] == t][["HomeTeamCat", "AwayTeamCat"]].values for t in set(df["round_labels"])]
-print("eval start")  #geen idee wat dit doet :') 05-01-2021
-df['participants'] = df.participants.apply(eval)
-print("eval end")
+# print("eval start")  #geen idee wat dit doet :') 05-01-2021
+# df['participants'] = df.participants.apply(eval)
+# print("eval end")
 matches_per_round = [[(i, j) for i, j in round] for round in temp]
 #turn into a dict for performance and correct indexing:
 matches_per_round = {i+1: matches_per_round[i] for i in range(len(matches_per_round))} 
+
+
 seen_teams = set()
-unseen_teams = set(df["HomeTeamCat"].values).union(df["AwayTeamCat"].values)
+#unseen_teams = set(df["HomeTeamCat"].values).union(df["AwayTeamCat"].values)
 
 def selec_mat(combination, N=33):
     # returns the selection-matrix that selects (a_i, a_j, B_i, B_j)' when
@@ -151,7 +179,7 @@ def update_fijt(i, j, psi, t, f_t,  in_round):
 def select_rows_to_update_played(i,j):
     #returns numpy indices of the rows to be updated based on team_numbers i and j 
     # selects rows to update ait, ajt, bit, bjt respectively
-    return 0 
+    return [i, j, i+team_amount, j+team_amount] 
 def select_rows_to_update_absent(i):
     # selects correct rows for updating a_it and b_it respectively
     return 0 
@@ -162,13 +190,13 @@ def update_round(t, psi, ft, num_teams =33):
 
     It does this by handling all occuring matches in a round using update_fijt()
     and handling all teams that did not play a match in a round using update_non_playing()"""
-    f_t = ...
+    #f_t = ...
     #teams_in_round = set()
     all_teams = set(range(num_teams)) #num_teams is 33
-    participants = df[df["round_labels"] == t].iloc[0].participants
-    
+    participants = df[df["round_labels"] == t].iloc[0].participants    
     teams_not_in_round = all_teams.difference(participants)         
     matches_played = matches_per_round[t]
+
     for match in matches_played:  # updates teams that actually play matches
         i,j = match
         M_ij = select_dict[(i, j)]
@@ -187,18 +215,113 @@ def update_round(t, psi, ft, num_teams =33):
     f_t_next = f_t  # just for naming
     return f_t_next
 
+def set_new_teams_parameters(new_teams, ft): 
+    #initializes strenghts and defences to 0 for newly-appeared teams
+    new_teams = list(new_teams)
+    alpha_locs = new_teams
+    beta_locs  = np.array(new_teams) + team_amount
 
-def construct_w(f1, B):
+    ft[alpha_locs] = 0
+    ft[beta_locs] = 0
+    return ft
+def get_f1():
+    return f1
+def update_fijt(fijt,i,j,psi,wijt,t):
+    a1, a2, b1, b2, l3, delta = psi
+    alpha_i, alpha_j, beta_i, beta_j = fijt
+    score = 0
+    fijt_updated = fijt 
+    
+    x = get_home_goals(i, j, t)
+    y = get_away_goals(i, j, t)
+    l3 = lambda_3
+    
+    score = bivariate_poisson.score(fijt,x, y, l3, delta) #must return a 4x1 vector
+    
 
-    return f1.dot(np.ones(1, B.shape[0]) - np.diag(B))    # page 17 Lit. 2017
+    Bij = np.diag([b1,b1,b2,b2])
+    Aij = np.diag([a1,a1,a2,a2])
+
+    fijt_updated = wijt + Bij@fijt + Aij@score  
+    return fijt_updated
+
+def update_non_playing_team(team_nr, ft_team_nr,b1,b2,w_m ):
+    w_m_alpha, w_m_beta = w_m 
+    alpha_mt, beta_mt = ft_team_nr
+
+    alpha_mt_next = w_m_alpha + b1*alpha_mt
+    beta_mt_next = w_m_beta + b2*beta_mt
+
+    return np.array([alpha_mt_next, beta_mt_next]).reshape((2,1))
+    
+
+
+def update_round(ft,psi,w, t):
+    all_teams = set(range(team_amount))  # num_teams is 33
+    participants = df[df["round_labels"] == t].iloc[0].participants
+    matches_this_round = matches_per_round[t]
+    ft_next = ft
+    # [  CASE 1  ]
+    #new teams entering competition in this round
+    new_teams = participants.intersection(unseen_teams)
+    if new_teams:
+        for team in new_teams:
+            update_seen_teams(team)        #changes the set of seen_teams and unseen_teams    
+            #set new_teams' strengths to 0
+        ft = set_new_teams_parameters(new_teams,ft) #zet new_teams alpha en beta op 0 
+            #calculate their w : gewoon op 0 laten staan
+
+            #update their f_ij,t+1 accordingly -> gebeurt op zelfde manier als andere teams
+    # [  CASE 2  ]
+    #update teams not playing in this round BUT seen before (thus not in new_teams): 
+    for match in matches_this_round:  # updates teams that actually play matches
+        i, j = match #i and j are teams playing in this match
+        selection = [i, j, i+team_amount, j+team_amount]
+        fijt = ft[selection]
+        wijt = w[selection]
+        ft_next[selection] = update_fijt(fijt, i,j,psi, wijt,t)
+
+    seen_teams_not_playing = all_teams.difference(participants).difference(unseen_teams)
+    if seen_teams_not_playing:
+        for team in seen_teams_not_playing:
+            selection = [team, team+team_amount]
+            #update alpha_team,t+1 = w_team + b1 * alpha_team,t
+            #update beta_team,t+1 = w_team + b2 * beta_team,t
+            ft_team = ft[selection]  # (alpha_mt, beta_mt)'
+            w_m = w[selection] # (w_alpha_m, w_beta_m)'
+            ft_next[selection] = update_non_playing_team(team, ft_team, psi, w_m )
+    
+    
+
+    
+    return ft_next 
+
+def construct_w(f1, b1, b2):
+    f1_values = f1.values.reshape((team_amount*2,1))
+    ones_vec = np.ones((team_amount*2,1))
+    diagonal_of_B = np.array(([b1]*team_amount,[b2]*team_amount)).reshape((team_amount*2,1))
+
+    rhs = ones_vec - diagonal_of_B 
+    result = np.multiply(f1_values, rhs)
+    return result.reshape(66,)
+
+# def construct_w(f1, B):
+#     f1_values = f1.values.reshape((1,66)) 
+#     ones_vec = np.ones((1,B.shape[0]))
+#     diagonal_B = np.diag(B) 
+#     rhs = ones_vec - diagonal_B
+#     result = np.multiply(f1_values, rhs) #point-wise multiplication of f1*(1-diag(B))
+#     return result
 
 
 def log_likelihood_score_driven(theta, data, minimize=True):
-    n = 33
+    # adjust to time-varying model: 
+
+    n = team_amount
     # print(x)
 
-    a1, a2, b1, b2, w, gamma, delta, f1 = theta
-    a1, a2, b1, b2, gamma, delta = psi
+    a1, a2, b1, b2, w, lambda_3, delta, f1 = theta
+    a1, a2, b1, b2, lambda_3, delta = psi
     alphas = f_t[:n]
     betas = f_t[n:2*n]
 
@@ -209,7 +332,7 @@ def log_likelihood_score_driven(theta, data, minimize=True):
             print("Analyzing game ", i)
         # print("GAME ", i)
         # print(type(x))
-        # print(data)
+        # print(data) 
         # print(data.shape)
         game = data.iloc[i]
 
@@ -218,7 +341,7 @@ def log_likelihood_score_driven(theta, data, minimize=True):
         x, y = game["y"]
         l1 = np.exp(alphas[home] - betas[away] + delta)
         l2 = np.exp(alphas[away] - betas[home])
-        l3 = gamma
+        l3 = lambda_3
         total += np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
     #total += 0.1 * np.sum(alphas)
     if minimize == True:
@@ -226,17 +349,36 @@ def log_likelihood_score_driven(theta, data, minimize=True):
     return total
 
 
+rounds_in_first_year = np.max(df.round_labels.values[:380]) #in 38 rounds, 380 matches played in first year.
+
 def update_all(f1, psi):
+    a1, a2, b1, b2, lambda3, delta = psi    
+    w = construct_w(f1,b1,b2)
+
     num_rounds = np.max(df["round_labels"].values)
-    f_t_total = np.zeros((f1.shape[0], num_rounds))
-    f_t_total[0, :] = f1
+    ft_total = np.zeros((f1.shape[0], num_rounds  ))
+    ft_total[:,0] = f1.values   #Maher-estimated vector is f_0 
     first_round = rounds_in_first_year + 1
-    rounds = range(first_round, num_rounds)
+    rounds = range(first_round, num_rounds) 
     for round in rounds:
-        f_t_next = update_round(t, psi, ft)
-        f_t_total.concatenate
+
+        ft = ft_total[:,round-1] 
+        ft_next = update_round(round, psi, ft)
+        ft_total[:,round] = ft_next
+
+    return ft_total
+
+# def construct_omega(f1, B):
+#     #following Koopman/Lit omega is constructed by  w = f1.pointwise(    ( 1-Diag(B)  )    )
+#     diag_B = 1
+#     return 0 
+
+#start calculating here...
+
 
 
 print("DONE")
+
+
 
 # %%

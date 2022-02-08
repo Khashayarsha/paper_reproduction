@@ -4,7 +4,7 @@ from scipy import optimize
 from scipy import stats
 import scipy
 import bivariate_poisson
-from score_driver import ScoreDriver
+#from score_driver import ScoreDriver
 import numpy as np
 import pandas as pd
 import os
@@ -12,7 +12,15 @@ import scipy.special
 factorial = scipy.special.factorial
 ncr = scipy.special.comb
 
-data_path = r"C:\Users\XHK\Desktop\thesis_code\reproduceLit2017\data"
+# purpose of this module is to get raw data, and process it such that
+# maher_initialization.py can initialize the first power-vector
+
+#in:   raw data.csv from TimeSeriesLab
+#out:  prepped_data.pkl for use in maher_initialization
+#      saves it in ../../data/interim  folder
+
+
+data_path = "../../data/raw"
 print("Expected directory containing data = ", data_path)
 os.chdir(data_path)
 
