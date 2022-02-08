@@ -254,14 +254,15 @@ def update_fijt(fijt,i,j,psi,wijt,t):
     fijt_updated = wijt + Bij@fijt + Aij@score  
     return fijt_updated
 
-def update_non_playing_team(team_nr, ft_team_nr,b1,b2,w_m ):     
+def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):  
+    a1,a2,b1,b2,_l3,_delta = psi
     w_m_alpha, w_m_beta = w_m 
     alpha_mt, beta_mt = ft_team_nr
 
     alpha_mt_next = w_m_alpha + b1*alpha_mt
     beta_mt_next = w_m_beta + b2*beta_mt
 
-    return np.array([alpha_mt_next, beta_mt_next]).reshape((2,1))
+    return np.array([alpha_mt_next, beta_mt_next]) #.reshape((2,1))
     
 
 
@@ -300,6 +301,10 @@ def update_round(ft,psi,w, t):
             #update beta_team,t+1 = w_team + b2 * beta_team,t
             ft_team = ft[selection]  # (alpha_mt, beta_mt)'
             w_m = w[selection] # (w_alpha_m, w_beta_m)'
+            print('update_non_playing_team shape = ',
+                  update_non_playing_team(team, ft_team, psi, w_m).shape)
+            print('ft_next[selection] shape = ',
+                  ft_next[selection].shape)
             ft_next[selection] = update_non_playing_team(team, ft_team, psi, w_m )
     
     
@@ -410,8 +415,7 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
             bivariate_poisson.pmf(x, y, l1, l2, l3))
 
     return total_round_likelihood
-
-
+ 
 def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
     #gets theta-parameters from the optimizer
     a1, a2, b1, b2 = theta #these are the only 4 parameters that need estimations
@@ -420,6 +424,7 @@ def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
     #using those parameters, gets ft_total from train_score_driven_model
     psi = (a1, a2, b1, b2, l3, delta)
     ft_total = update_all(f1, psi)
+    print('FT_TOTAL: ', ft_total)
     #calculates the total log likelihood and returns it
 
     #optimizer optimizes, returns optimal estimated parameter-vector.
