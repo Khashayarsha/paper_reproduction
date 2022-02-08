@@ -4,6 +4,11 @@ import pandas as pd
 import numpy as np
 import bivariate_poisson
 import os
+from scipy import optimize
+from scipy.optimize import minimize
+from scipy import stats
+import scipy
+
 data_path = r"../../data/interim"
 print("Expected directory containing data = ", data_path)
 os.chdir(data_path)
@@ -43,7 +48,7 @@ lambda_3 = f1.values[-2]  # noemde dit eerst gamma_1, maar is bs
 delta_1 = f1.values[-1]
 mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
 
-unseen_teams = df['absentees'].iloc[0]  #set of teams not playing in first round
+unseen_teams = set(df['absentees'].iloc[0])  #set of teams not playing in first round
 seen_teams = set(df.iloc[0].participants) #set of teams that played in first round (from which Maher init calculated)
 
 
@@ -56,7 +61,7 @@ matches_per_round = [[(i, j) for i, j in round] for round in temp]
 matches_per_round = {i+1: matches_per_round[i] for i in range(len(matches_per_round))} 
 
 
-seen_teams = set()
+#seen_teams = set()
 #unseen_teams = set(df["HomeTeamCat"].values).union(df["AwayTeamCat"].values)
 
 def selec_mat(combination, N=33):
@@ -103,7 +108,7 @@ def get_goals(i, j, t):
     home, away, round = i, j, t
 
     # verify team i plays team j in round t
-    matches_played = matches_per_round(round)
+    matches_played = matches_per_round.get(round)
     match_exists = (home,away) in matches_played
     if not match_exists:
         print(f"Match {(home,away)} in round {round} does not exist ")
@@ -127,19 +132,19 @@ def update_seen_teams(seen_team):
     unseen_teams.remove(seen_team)
 
 
-def update_non_playing_team(i, t, psi, ft):
-    """Updates the team strengths and defences of teams
-     that did not play in a specific round """
+# def update_non_playing_team(i, t, psi, ft):
+#     """Updates the team strengths and defences of teams
+#      that did not play in a specific round """
 
-    # how to handle the case where a previously unseen team plays against a
-    # previously seen team?
+#     # how to handle the case where a previously unseen team plays against a
+#     # previously seen team?
     
 
-    #w_i, B_i = psi[select w and B]
-    f_it_next = 0
-    f_it_next += w_ij + B_ij*f_ijt + A_ij * score
+#     #w_i, B_i = psi[select w and B]
+#     f_it_next = 0
+#     f_it_next += w_ij + B_ij*f_ijt + A_ij * score
 
-    return 0
+#     return 0
 
 
 def update_fijt(i, j, psi, t, f_t,  in_round):
@@ -200,19 +205,19 @@ def update_round(t, psi, ft, num_teams =33):
     for match in matches_played:  # updates teams that actually play matches
         i,j = match
         M_ij = select_dict[(i, j)]
-        ait, ajt, bit, bjt = update_fijt( i, j, psi,t, f_t, in_round=True)  # ait_next, bit_next
+        ait, ajt, bit, bjt = update_fijt( i, j, psi,t, ft, in_round=True)  # ait_next, bit_next
         selection = select_rows_to_update_played(i, j)
         updated = np.array([ait, ajt, bit, bjt])
-        f_t[selection] = updated
+        ft[selection] = updated
     print(f"round {t}, done updating teams that have played matches")
     for team in teams_not_in_round:
         # ait, bit should be called ait_next, bit_next
-        ait_next, bit_next = update_non_playing_team(i, f_t, psi)
+        ait_next, bit_next = update_non_playing_team(i, ft, psi)
         selection = select_rows_to_update_absent(i)
         updated = np.array([ait_next, bit_next])
-        f_t[selection] = updated
+        ft[selection] = updated
     print(f"round {t}, done updating teams that have NOT played matches")
-    f_t_next = f_t  # just for naming
+    f_t_next = ft  # just for naming
     return f_t_next
 
 def set_new_teams_parameters(new_teams, ft): 
@@ -220,6 +225,10 @@ def set_new_teams_parameters(new_teams, ft):
     new_teams = list(new_teams)
     alpha_locs = new_teams
     beta_locs  = np.array(new_teams) + team_amount
+
+    #print('ft in set_new_teams_parameters: ', ft)
+    #print('alpha locs: ', alpha_locs)
+    #print('beta_locs: ', beta_locs)
 
     ft[alpha_locs] = 0
     ft[beta_locs] = 0
@@ -245,7 +254,7 @@ def update_fijt(fijt,i,j,psi,wijt,t):
     fijt_updated = wijt + Bij@fijt + Aij@score  
     return fijt_updated
 
-def update_non_playing_team(team_nr, ft_team_nr,b1,b2,w_m ):
+def update_non_playing_team(team_nr, ft_team_nr,b1,b2,w_m ):     
     w_m_alpha, w_m_beta = w_m 
     alpha_mt, beta_mt = ft_team_nr
 
@@ -256,9 +265,11 @@ def update_non_playing_team(team_nr, ft_team_nr,b1,b2,w_m ):
     
 
 
-def update_round(ft,psi,w, t):
+def update_round(ft,psi,w, t): 
+    #print('ft in UPDATE ROUND:', ft)
     all_teams = set(range(team_amount))  # num_teams is 33
     participants = df[df["round_labels"] == t].iloc[0].participants
+    participants = set(participants)
     matches_this_round = matches_per_round[t]
     ft_next = ft
     # [  CASE 1  ]
@@ -351,7 +362,7 @@ def log_likelihood_score_driven(theta, data, minimize=True):
 
 rounds_in_first_year = np.max(df.round_labels.values[:380]) #in 38 rounds, 380 matches played in first year.
 
-def update_all(f1, psi):
+def update_all(f1, psi):   
     a1, a2, b1, b2, lambda3, delta = psi    
     w = construct_w(f1,b1,b2)
 
@@ -361,9 +372,14 @@ def update_all(f1, psi):
     first_round = rounds_in_first_year + 1
     rounds = range(first_round, num_rounds) 
     for round in rounds:
-
-        ft = ft_total[:,round-1] 
-        ft_next = update_round(round, psi, ft)
+        ft = 0 #placeholder
+        print('updating round: ', round)
+        if round == first_round:
+            ft = f1.values
+        else:
+            ft = ft_total[:,round-1] 
+        #print('ft in UPDATE ALL', ft)
+        ft_next = update_round(ft, psi, w, round) 
         ft_total[:,round] = ft_next
 
     return ft_total
@@ -376,7 +392,80 @@ def update_all(f1, psi):
 #start calculating here...
 
 
+def calc_round_likelihood(all_games_in_round, ft, delta, l3):
+    total_round_likelihood = 0
+    for game in all_games_in_round:
+        team_amount = ft.shape[0]/2
+        home_team, away_team = game["HomeTeamCat"], game["AwayTeamCat"]
 
+        selection = [home_team, away_team, home_team +
+                     team_amount, away_team+team_amount]
+        alpha_i, alpha_j, beta_i, beta_j = ft[selection]
+
+        x, y = game["y"]
+        l1 = np.exp(alpha_i - beta_j + delta)
+        l2 = np.exp(alpha_j - beta_i)
+
+        total_round_likelihood += np.log(
+            bivariate_poisson.pmf(x, y, l1, l2, l3))
+
+    return total_round_likelihood
+
+
+def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
+    #gets theta-parameters from the optimizer
+    a1, a2, b1, b2 = theta #these are the only 4 parameters that need estimations
+    #f1 = sd.get_f1()  # is een dataFrame series.
+     #f1, l3, delta, rounds_in_first_year = args #are estimated beforehand with Maher
+    #using those parameters, gets ft_total from train_score_driven_model
+    psi = (a1, a2, b1, b2, l3, delta)
+    ft_total = update_all(f1, psi)
+    #calculates the total log likelihood and returns it
+
+    #optimizer optimizes, returns optimal estimated parameter-vector.
+
+    first_round_index = 0
+    last_round = ft_total.shape[1]
+
+    total_likelihood = 0
+
+    for round in range(first_round_index, last_round):
+        #retrieve (x,y) score for this round from df
+        #retrieve related strength-vector f_round from ft_total
+        #feed to calc_round_likelihood
+        all_games_in_round = df[df.round.labels == round]
+        f_t = ft_total[:, round]
+        round_likelihood = calc_round_likelihood(
+            all_games_in_round, f_t, delta, l3)
+        total_likelihood += round_likelihood
+    
+    minimize=True
+    if minimize == True:
+        # if optimizer uses minimisation in stead of maximisation.
+        return -1*total_likelihood
+    return total_likelihood
+
+
+def optimizer():
+    #theta contains the paramters to optimize: a1,a2,b1,b2
+    #args takes additional parameters that won't be optimized:
+    #args = (f1, delta_1, lambda_3, rounds_in_first_year)
+    f1 = get_f1()
+    print('succesfully retrieved f1 for optimizer')
+    arguments = (f1, delta_1, lambda_3, rounds_in_first_year)
+    # a1,a2,b1,b2 = theta
+    theta_ini = (0.1, 0.1, 0.1, 0.1)
+    print('starting optimizer: ...')
+    results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args =arguments, method='nelder-mead',options={'xatol': 1e-8, 'disp': True})
+    
+    
+    # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
+    #                                   options=options,
+    #                                   method='SLSQP',
+    #                                   constraints=cons,
+    #                                   bounds=boundaries)
+    return results
+results = optimizer()
 print("DONE")
 
 

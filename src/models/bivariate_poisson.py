@@ -10,7 +10,8 @@ def pmf(x, y, l1, l2, l3, n=1):  #bivariate poisson
     # returns probability mass for a given score (x,y), given lambdas l1, l2, l3
     # check if x and y are integers:
     #print(x, y)
-    minimum = int(min(x, y))    
+    minimum = int(min(x, y))  
+    #print('minimum in bivariate pmf, and type: ', minimum, type(minimum))
     # print(minimum)
     first = (np.exp(-1*(l1+l2+l3)) * ((l1**x)/factorial(x))
              * ((l2**y)/factorial(y)))
@@ -36,20 +37,29 @@ def pmf(x, y, l1, l2, l3, n=1):  #bivariate poisson
 def S(q, psi, x , y):
     # helperfunction for gradient
     # part of bivar. poisson gradient, see appendix at p.32 of Lit2017
-
+    #print('x and y ', x, y, type(x), type(y))
     l1, l2, l3 = psi
+    x, y = int(x), int(y)
     min_xy = min(x, y)
+    #print('min_xy in S from bivariate_poisson. Value and type: ', min_xy, type(min_xy))
     sum = 0
-    for k in range(0, min_xy):
+
+    
+    for k in range(0, min_xy+1): 
         sum += ncr(x, k, exact=True) * ncr(y, k, exact=True) * \
             factorial(k) * (k**q) * ((l3/(l1*l2))**k)
+
+    print(f'S(q, psi, x , y) is using parameters: q={q} psi= {psi} x= {x}y = {y} and result = {sum}')
+
     return sum
 
 
 def U(psi, x, y):
     # helper-function for gradient
     # part of bivar. poisson gradient, see appendix at p.32 of Lit2017
-
+    print('psi: ', psi)
+    print('x,y', x,y)
+    print('S(1, ..) , S(0,...) values: ', S(1, psi, x, y), S(0, psi, x, y))
     return S(1, psi, x, y) / S(0, psi, x, y)
 
 

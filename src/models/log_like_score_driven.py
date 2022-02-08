@@ -25,7 +25,7 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3 ):
 
             total_round_likelihood += np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
             
-    return total_round_likelihood
+    return total_round_likelihood 
 
     
 def total_log_like_score_driven(theta, df, rounds_in_first_year, minimize = True):
@@ -35,7 +35,7 @@ def total_log_like_score_driven(theta, df, rounds_in_first_year, minimize = True
     
 
     #using those parameters, gets ft_total from train_score_driven_model
-    ft_total = score_driver.update_all(f1,theta)
+    ft_total = sd.update_all(f1,theta)
     #calculates the total log likelihood and returns it
     
     #optimizer optimizes, returns optimal estimated parameter-vector.
@@ -65,6 +65,8 @@ def optimize():
     #theta contains the paramters to optimize: a1,a2,b1,b2
     #args takes additional parameters that won't be optimized: 
     #args = (delta, l3,w )
+
+    args = (delta, l3)
     theta_ini = 0
     results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=(first_year),
                                       options=options,
