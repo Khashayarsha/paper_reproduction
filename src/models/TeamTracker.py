@@ -15,10 +15,13 @@ class TeamTracker:
         self.unseen_teams = self.initial_unseen_teams       
         self.seen_teams = self.initial_seen_teams
 
-    def update_seen_teams(self, seen_team):
-        
+    def update_teams(self, seen_team):
+        print("Before update with team : ", seen_team)
+        self.return_teams()
         self.unseen_teams.remove(seen_team)
         self.seen_teams.add(seen_team)
+        print("after update with seen_team = ", seen_team)
+        self.return_teams()
     def return_teams(self):
         print("unseen_teams: ", self.unseen_teams)
         print("seen_teams: ", self.seen_teams) 

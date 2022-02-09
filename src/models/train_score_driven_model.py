@@ -8,6 +8,7 @@ from scipy import optimize
 from scipy.optimize import minimize
 from scipy import stats
 import scipy
+from TeamTracker import TeamTracker
 
 data_path = r"../../data/interim"
 print("Expected directory containing data = ", data_path)
@@ -33,6 +34,9 @@ def get_initialized_data(data_location = data_path, data_type = ".pkl", data_nam
 
 df = get_initialized_data()
 
+use_small_data = True
+if use_small_data == True: 
+    df = df.iloc[:700]
 
 
 
@@ -51,9 +55,9 @@ mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
 unseen_teams_init = set(df['absentees'].iloc[0])
 seen_teams_init = set(df.iloc[0].participants) 
 
-unseen_teams = set(df['absentees'].iloc[0])  #set of teams not playing in first round
-seen_teams = set(df.iloc[0].participants) #set of teams that played in first round (from which Maher init calculated)
-
+#unseen_teams = set(df['absentees'].iloc[0])  #set of teams not playing in first round
+#seen_teams = set(df.iloc[0].participants) #set of teams that played in first round (from which Maher init calculated)
+team_tracker = TeamTracker(unseen_teams_init, seen_teams_init)
 
 temp = [df[df["round_labels"] == t][["HomeTeamCat", "AwayTeamCat"]].values for t in set(df["round_labels"])]
 # print("eval start")  #geen idee wat dit doet :') 05-01-2021
@@ -130,12 +134,12 @@ def get_away_goals(i, j, t):
     home_goals, away_goals = get_goals(i, j, t)
     return away_goals
 
-def update_seen_teams(seen_team):
-    seen_teams.add(seen_team)
-    unseen_teams.remove(seen_team)
+# def update_seen_teams(seen_team):
+#     seen_teams.add(seen_team)
+#     unseen_teams.remove(seen_team)
 
-def reset_unseen_and_seen_teams():
-    return unseen_teams_init, seen_teams_init
+# def reset_unseen_and_seen_teams():
+#     return unseen_teams_init, seen_teams_init
 
 
 
@@ -190,7 +194,7 @@ def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):
 
 
 def update_round(ft,psi,w, t): 
-    if(t%10==0):
+    if(t%100==0):
         print('updating f_t for round  ', t)
     #print('ft in UPDATE ROUND:', ft)
     all_teams = set(range(team_amount))  # num_teams is 33
@@ -200,10 +204,12 @@ def update_round(ft,psi,w, t):
     ft_next = ft
     # [  CASE 1  ]
     #new teams entering competition in this round
-    new_teams = participants.intersection(unseen_teams)
+    
+    new_teams = participants.intersection(team_tracker.unseen_teams)
     if new_teams:
         for team in new_teams:
-            update_seen_teams(team)        #changes the set of seen_teams and unseen_teams    
+            team_tracker.update_teams(team)
+            #update_seen_teams(team)        #changes the set of seen_teams and unseen_teams    
             #set new_teams' strengths to 0
         ft = set_new_teams_parameters(new_teams,ft) #zet new_teams alpha en beta op 0 
             #calculate their w : gewoon op 0 laten staan
@@ -218,7 +224,7 @@ def update_round(ft,psi,w, t):
         wijt = w[selection]
         ft_next[selection] = update_fijt(fijt, i,j,psi, wijt,t)
 
-    seen_teams_not_playing = all_teams.difference(participants).difference(unseen_teams)
+    seen_teams_not_playing = all_teams.difference(participants).difference(team_tracker.unseen_teams)
     if seen_teams_not_playing:
         for team in seen_teams_not_playing:
             selection = [team, team+team_amount]
@@ -252,39 +258,6 @@ def construct_w(f1, b1, b2):
 #     return result
 
 
-def log_likelihood_score_driven(theta, data, minimize=True):
-    # adjust to time-varying model: 
-
-    n = team_amount
-    # print(x)
-
-    a1, a2, b1, b2, w, lambda_3, delta, f1 = theta
-    a1, a2, b1, b2, lambda_3, delta = psi
-    alphas = f_t[:n]
-    betas = f_t[n:2*n]
-
-    total = 0
-
-    for i in data.index:
-        if i % 100 == 0:
-            print("Analyzing game ", i)
-        # print("GAME ", i)
-        # print(type(x))
-        # print(data) 
-        # print(data.shape)
-        game = data.iloc[i]
-
-        home = game["HomeTeamCat"]
-        away = game["AwayTeamCat"]
-        x, y = game["y"]
-        l1 = np.exp(alphas[home] - betas[away] + delta)
-        l2 = np.exp(alphas[away] - betas[home])
-        l3 = lambda_3
-        total += np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
-    #total += 0.1 * np.sum(alphas)
-    if minimize == True:
-        return -1*total
-    return total
 
 
 rounds_in_first_year = np.max(df.round_labels.values[:380]) #in 38 rounds, 380 matches played in first year.
@@ -307,7 +280,7 @@ def update_all(f1, psi):
     rounds = range(first_round, num_rounds)  
     for round in rounds:
         ft = 0 #placeholder
-        print('updating round: ', round)
+        #print('updating round: ', round)
         if round == first_round:
             ft = f1.values
         else:
@@ -316,7 +289,7 @@ def update_all(f1, psi):
         ft_next = update_round(ft, psi, w, round) 
         ft_total[:,round] = ft_next
     print("DONE WITH UPDATE ALL. Resetting Unseens and Seen Teams and Proceeding to likelihood calc:  ")
-    unseen_teams, seen_teams = reset_unseen_and_seen_teams()
+    team_tracker.reset()
     return ft_total
 
 # def construct_omega(f1, B):
@@ -342,8 +315,7 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
         l1 = np.exp(alpha_i - beta_j + delta)
         l2 = np.exp(alpha_j - beta_i)
 
-        game_ll = np.log(
-            bivariate_poisson.pmf(x, y, l1, l2, l3))
+        game_ll = np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
         return game_ll
     temp = all_games_in_round.apply(game_likelihood, ft = ft, delta =delta, l3 = l3, axis = 1)
     return temp.sum(axis=0)
@@ -359,7 +331,7 @@ def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
     psi = (a1, a2, b1, b2, l3, delta)
     ft_total = update_all(f1, psi)
     print('ft_total succesfully calculated')
-    print("ft_total has shape: ", ft_total.shape)
+    #print("ft_total has shape: ", ft_total.shape)
     #print('FT_TOTAL: ', ft_total)
     #calculates the total log likelihood and returns it
 
