@@ -48,6 +48,9 @@ lambda_3 = f1.values[-2]  # noemde dit eerst gamma_1, maar is bs
 delta_1 = f1.values[-1]
 mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
 
+unseen_teams_init = set(df['absentees'].iloc[0])
+seen_teams_init = set(df.iloc[0].participants) 
+
 unseen_teams = set(df['absentees'].iloc[0])  #set of teams not playing in first round
 seen_teams = set(df.iloc[0].participants) #set of teams that played in first round (from which Maher init calculated)
 
@@ -131,94 +134,14 @@ def update_seen_teams(seen_team):
     seen_teams.add(seen_team)
     unseen_teams.remove(seen_team)
 
-
-# def update_non_playing_team(i, t, psi, ft):
-#     """Updates the team strengths and defences of teams
-#      that did not play in a specific round """
-
-#     # how to handle the case where a previously unseen team plays against a
-#     # previously seen team?
-    
-
-#     #w_i, B_i = psi[select w and B]
-#     f_it_next = 0
-#     f_it_next += w_ij + B_ij*f_ijt + A_ij * score
-
-#     return 0
+def reset_unseen_and_seen_teams():
+    return unseen_teams_init, seen_teams_init
 
 
-def update_fijt(i, j, psi, t, f_t,  in_round):
-    """ updates strengths and defences of teams i and  j 
-    according to the updating rule per match played in a round."""
 
-    # f_ijt+1 = w_ij + B_ij * f_ijt + A_ij * s_ijt
-    a1, a2, b1, b2, l3, delta = psi
 
-    score = 0
 
-    M_ij = select_dict[(i, j)]
 
-    f_ijt = M_ij@f_t
-    alpha_i, alpha_j, beta_i, beta_j = f_ijt
-    l1, l2 = link_function(alpha_i, beta_j, delta, alpha_j, beta_i)
-
-    if in_round:
-        x = get_home_goals(i, j, t)
-        y = get_away_goals(i, j, t)
-        score = bivariate_poisson.score(x, y, l1, l2, l3)
-    else:
-        score = 0
-
-    w_ij = M_ij@w
-    #A_ij = np.multiply(np.multiply(M_ij, A), M_ij.T)
-    #B_ij = np.multiply(np.multiply(M_ij, B), M_ij.T)
-
-    B_ij = np.diag([b1, b1, b2, b2])  # auto-regressive part
-    A_ij = np.diag([a1, a1, a2, a2])  # score-updating part
-
-    f_ijt_next = 0
-    f_ijt_next += w_ij + B_ij*f_ijt + A_ij * score
-
-    return f_ijt_next            # (a_it_next, a_jt_next, b_it_next, b_jt_next)
-
-def select_rows_to_update_played(i,j):
-    #returns numpy indices of the rows to be updated based on team_numbers i and j 
-    # selects rows to update ait, ajt, bit, bjt respectively
-    return [i, j, i+team_amount, j+team_amount] 
-def select_rows_to_update_absent(i):
-    # selects correct rows for updating a_it and b_it respectively
-    return 0 
-
-def update_round(t, psi, ft, num_teams =33):
-    """gets psi and current strengths and defences (ft) and calculates
-    according to score-update rule from Lit 2017 the next f_t+1 and returns this.
-
-    It does this by handling all occuring matches in a round using update_fijt()
-    and handling all teams that did not play a match in a round using update_non_playing()"""
-    #f_t = ...
-    #teams_in_round = set()
-    all_teams = set(range(num_teams)) #num_teams is 33
-    participants = df[df["round_labels"] == t].iloc[0].participants    
-    teams_not_in_round = all_teams.difference(participants)         
-    matches_played = matches_per_round[t]
-
-    for match in matches_played:  # updates teams that actually play matches
-        i,j = match
-        M_ij = select_dict[(i, j)]
-        ait, ajt, bit, bjt = update_fijt( i, j, psi,t, ft, in_round=True)  # ait_next, bit_next
-        selection = select_rows_to_update_played(i, j)
-        updated = np.array([ait, ajt, bit, bjt])
-        ft[selection] = updated
-    print(f"round {t}, done updating teams that have played matches")
-    for team in teams_not_in_round:
-        # ait, bit should be called ait_next, bit_next
-        ait_next, bit_next = update_non_playing_team(i, ft, psi)
-        selection = select_rows_to_update_absent(i)
-        updated = np.array([ait_next, bit_next])
-        ft[selection] = updated
-    print(f"round {t}, done updating teams that have NOT played matches")
-    f_t_next = ft  # just for naming
-    return f_t_next
 
 def set_new_teams_parameters(new_teams, ft): 
     #initializes strenghts and defences to 0 for newly-appeared teams
@@ -267,6 +190,8 @@ def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):
 
 
 def update_round(ft,psi,w, t): 
+    if(t%10==0):
+        print('updating f_t for round  ', t)
     #print('ft in UPDATE ROUND:', ft)
     all_teams = set(range(team_amount))  # num_teams is 33
     participants = df[df["round_labels"] == t].iloc[0].participants
@@ -301,10 +226,7 @@ def update_round(ft,psi,w, t):
             #update beta_team,t+1 = w_team + b2 * beta_team,t
             ft_team = ft[selection]  # (alpha_mt, beta_mt)'
             w_m = w[selection] # (w_alpha_m, w_beta_m)'
-            print('update_non_playing_team shape = ',
-                  update_non_playing_team(team, ft_team, psi, w_m).shape)
-            print('ft_next[selection] shape = ',
-                  ft_next[selection].shape)
+            
             ft_next[selection] = update_non_playing_team(team, ft_team, psi, w_m )
     
     
@@ -366,16 +288,23 @@ def log_likelihood_score_driven(theta, data, minimize=True):
 
 
 rounds_in_first_year = np.max(df.round_labels.values[:380]) #in 38 rounds, 380 matches played in first year.
-
+ 
 def update_all(f1, psi):   
+    print("running UPDATE ALL")
+     
     a1, a2, b1, b2, lambda3, delta = psi    
     w = construct_w(f1,b1,b2)
+    #make f1-vector the strength-vec of entire first year (first 38 rounds):
+    first_year_strengths = np.multiply(np.ones((f1.shape[0], rounds_in_first_year)), f1.values.reshape((66, 1)))
+
+    
 
     num_rounds = np.max(df["round_labels"].values)
     ft_total = np.zeros((f1.shape[0], num_rounds  ))
-    ft_total[:,0] = f1.values   #Maher-estimated vector is f_0 
-    first_round = rounds_in_first_year + 1
-    rounds = range(first_round, num_rounds) 
+    ft_total[:, :38] = first_year_strengths  # [f1,f1,...,f1] for first 37 columns
+
+    first_round = rounds_in_first_year 
+    rounds = range(first_round, num_rounds)  
     for round in rounds:
         ft = 0 #placeholder
         print('updating round: ', round)
@@ -386,7 +315,8 @@ def update_all(f1, psi):
         #print('ft in UPDATE ALL', ft)
         ft_next = update_round(ft, psi, w, round) 
         ft_total[:,round] = ft_next
-
+    print("DONE WITH UPDATE ALL. Resetting Unseens and Seen Teams and Proceeding to likelihood calc:  ")
+    unseen_teams, seen_teams = reset_unseen_and_seen_teams()
     return ft_total
 
 # def construct_omega(f1, B):
@@ -397,6 +327,7 @@ def update_all(f1, psi):
 #start calculating here...
 
 def calc_round_likelihood(all_games_in_round, ft, delta, l3):
+    print('calculating likelihood for round ', all_games_in_round.iloc[0].round_labels)
     temp = np.zeros(all_games_in_round.shape[0])
 
     def game_likelihood(game, ft, delta, l3):
@@ -417,7 +348,8 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
     temp = all_games_in_round.apply(game_likelihood, ft = ft, delta =delta, l3 = l3, axis = 1)
     return temp.sum(axis=0)
 
- 
+
+likelihood_list = []
 def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
     #gets theta-parameters from the optimizer
     a1, a2, b1, b2 = theta #these are the only 4 parameters that need estimations
@@ -426,16 +358,18 @@ def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
     #using those parameters, gets ft_total from train_score_driven_model
     psi = (a1, a2, b1, b2, l3, delta)
     ft_total = update_all(f1, psi)
-    print('FT_TOTAL: ', ft_total)
+    print('ft_total succesfully calculated')
+    print("ft_total has shape: ", ft_total.shape)
+    #print('FT_TOTAL: ', ft_total)
     #calculates the total log likelihood and returns it
 
     #optimizer optimizes, returns optimal estimated parameter-vector.
 
-    first_round_index = 0
+    first_round_index = rounds_in_first_year 
     last_round = ft_total.shape[1]
 
     total_likelihood = 0
-
+    print('total_likelihood is starting iteration over rounds: ')
     for round in range(first_round_index, last_round):
         #retrieve (x,y) score for this round from df
         #retrieve related strength-vector f_round from ft_total
@@ -445,7 +379,9 @@ def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
         round_likelihood = calc_round_likelihood(
             all_games_in_round, f_t, delta, l3)
         total_likelihood += round_likelihood
-    
+
+    likelihood_list.append((-1*total_likelihood,(a1,a2,b1,b2),construct_w(f1,b1,b2), ft_total))
+
     minimize=True
     if minimize == True:
         # if optimizer uses minimisation in stead of maximisation.
@@ -461,7 +397,7 @@ def optimizer():
     print('succesfully retrieved f1 for optimizer')
     arguments = (f1, delta_1, lambda_3, rounds_in_first_year)
     # a1,a2,b1,b2 = theta
-    theta_ini = (0.1, 0.1, 0.1, 0.1)
+    theta_ini = [0.1, 0.1, 0.1, 0.1]
     print('starting optimizer: ...')
     results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args =arguments, method='nelder-mead',options={'xatol': 1e-8, 'disp': True})
     

@@ -49,7 +49,7 @@ def S(q, psi, x , y):
         sum += ncr(x, k, exact=True) * ncr(y, k, exact=True) * \
             factorial(k) * (k**q) * ((l3/(l1*l2))**k)
 
-    print(f'S(q, psi, x , y) is using parameters: q={q} psi= {psi} x= {x}y = {y} and result = {sum}')
+    #print(f'S(q, psi, x , y) is using parameters: q={q} psi= {psi} x= {x}y = {y} and result = {sum}')
 
     return sum
 
@@ -57,9 +57,9 @@ def S(q, psi, x , y):
 def U(psi, x, y):
     # helper-function for gradient
     # part of bivar. poisson gradient, see appendix at p.32 of Lit2017
-    print('psi: ', psi)
-    print('x,y', x,y)
-    print('S(1, ..) , S(0,...) values: ', S(1, psi, x, y), S(0, psi, x, y))
+    #print('psi: ', psi)
+    #print('x,y', x,y)
+    #print('S(1, ..) , S(0,...) values: ', S(1, psi, x, y), S(0, psi, x, y))
     return S(1, psi, x, y) / S(0, psi, x, y)
 
 
