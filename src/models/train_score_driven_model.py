@@ -396,12 +396,12 @@ def update_all(f1, psi):
 
 #start calculating here...
 
-
 def calc_round_likelihood(all_games_in_round, ft, delta, l3):
-    total_round_likelihood = 0
-    for game in all_games_in_round:
-        team_amount = ft.shape[0]/2
-        home_team, away_team = game["HomeTeamCat"], game["AwayTeamCat"]
+    temp = np.zeros(all_games_in_round.shape[0])
+
+    def game_likelihood(game, ft, delta, l3):
+        team_amount = int(ft.shape[0]/2)
+        home_team, away_team = int(game["HomeTeamCat"]), int(game["AwayTeamCat"])
 
         selection = [home_team, away_team, home_team +
                      team_amount, away_team+team_amount]
@@ -411,10 +411,12 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
         l1 = np.exp(alpha_i - beta_j + delta)
         l2 = np.exp(alpha_j - beta_i)
 
-        total_round_likelihood += np.log(
+        game_ll = np.log(
             bivariate_poisson.pmf(x, y, l1, l2, l3))
+        return game_ll
+    temp = all_games_in_round.apply(game_likelihood, ft = ft, delta =delta, l3 = l3, axis = 1)
+    return temp.sum(axis=0)
 
-    return total_round_likelihood
  
 def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
     #gets theta-parameters from the optimizer
@@ -438,7 +440,7 @@ def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
         #retrieve (x,y) score for this round from df
         #retrieve related strength-vector f_round from ft_total
         #feed to calc_round_likelihood
-        all_games_in_round = df[df.round.labels == round]
+        all_games_in_round = df[df.round_labels == round]
         f_t = ft_total[:, round]
         round_likelihood = calc_round_likelihood(
             all_games_in_round, f_t, delta, l3)
