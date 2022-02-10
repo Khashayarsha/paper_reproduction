@@ -280,7 +280,7 @@ def update_all(f1, psi):
     rounds = range(first_round, num_rounds)  
     for round in rounds:
         ft = 0 #placeholder
-        #print('updating round: ', round)
+        print('updating round: ', round)
         if round == first_round:
             ft = f1.values
         else:
