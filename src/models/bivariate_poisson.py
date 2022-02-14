@@ -4,18 +4,24 @@ import os
 import scipy.special
 factorial = scipy.special.factorial
 ncr = scipy.special.comb
+ 
+def link_function(ai, aj, bi, bj, delta, thresh_min = 0.0001, thresh_max = 10):
+
+    l1, l2 = np.clip([np.exp(ai - bj + delta), np.exp(aj - bi)], a_min=thresh_min, a_max=thresh_max)
+    return l1, l2
 
 
 def pmf(x, y, l1, l2, l3, n=1):  #bivariate poisson
     # returns probability mass for a given score (x,y), given lambdas l1, l2, l3
     # check if x and y are integers:
     #print(x, y)
+
     minimum = int(min(x, y))  
     #print('minimum in bivariate pmf, and type: ', minimum, type(minimum))
     # print(minimum)
     first = (np.exp(-1*(l1+l2+l3)) * ((l1**x)/factorial(x))
              * ((l2**y)/factorial(y)))
-
+    # print(f"x = {x}, y={y}, l1 = {l1}, l2 = {l2}, l3= {l3}")
     def sum_part(mini, x, y):
         # print(mini)
         # print(type(mini))
@@ -65,7 +71,12 @@ def U(psi, x, y):
 
 def score(fijt,x,y,l3, delta):
     ai, aj, bi, bj = fijt 
-    l1,l2 = np.exp(ai - bj + delta), np.exp(aj - bi)
+    l1,l2 = link_function(ai, aj, bi, bj, delta) 
+    #p.7 of Koopman/Lit 2019 says "in practice the infinite upper bound
+                    #for l1ij and l2ij is replaced by 25"
+    # if (l1 > 5 or l2 > 5):
+    #     print("l1, l2 are VERRYYY HIGHHH: VALUES: ", l1, l2)
+
     psi = (l1,l2,l3)
     return np.array((x-l1 - U(psi,x,y),
                      y-l2 - U(psi,x,y),

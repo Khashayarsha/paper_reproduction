@@ -1,7 +1,8 @@
-# %%
+# %% 
 # %reset -f
 import pandas as pd
 import numpy as np
+from pydantic import constr
 import bivariate_poisson
 import os
 from scipy import optimize
@@ -9,10 +10,19 @@ from scipy.optimize import minimize
 from scipy import stats
 import scipy
 from TeamTracker import TeamTracker
+import pickle as pkl
+import time
 
+from decorators import CallCountDecorator
+
+np.seterr(over='raise')
+os.chdir(r"c:/Users/XHK/Desktop/thesis_code/paper_reproduction/src/models/")
+print(f'current directory = {os. getcwd()}')
+#os.chdir('./src/models')
 data_path = r"../../data/interim"
 print("Expected directory containing data = ", data_path)
 os.chdir(data_path)
+tic = time.perf_counter()
 
 # Takes the df_initialized.pkl file with the Maher-initialized vector and runs the score-driven model on it
 # Output is a matrix of f_t vectors, which are all the estimated team-strenghts at time t
@@ -42,16 +52,22 @@ if use_small_data == True:
 
 #import preprocess
 team_amount = 33     #turn into a   function or do this in pre-process etc
-f1_size = (team_amount * 2) #+2    f_t just consists of the time-varying team atk and def str's. 
+f1_size = (team_amount * 2) + 2#+2    f_t just consists of the time-varying team atk and def str's. 
                             # DELTA AND GAMMA ARE NOT TIME VARYING IN THIS MODEL.
 # psi1 = pd.read_csv("f1_maher_init2.csv")
 # print("TEST")
 # df = pd.read_csv("processed_data2.csv")
-f1 = df['f1'][:f1_size]
-lambda_3 = f1.values[-2]  # noemde dit eerst gamma_1, maar is bs
-delta_1 = f1.values[-1]
-mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
 
+#getting right parameters from initial f_vector (f1)
+
+f1_init = df['f1'][:f1_size].values
+#lambda_3 = f1.values[-2]  # noemde dit eerst gamma_1, maar is bs
+delta_1, lambda_3 = f1[-1], f1[-2]
+f1_init = f1_init[:f1_size-2] #ignores the delta and lambda_3
+
+
+mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
+ 
 unseen_teams_init = set(df['absentees'].iloc[0])
 seen_teams_init = set(df.iloc[0].participants) 
 
@@ -71,80 +87,74 @@ matches_per_round = {i+1: matches_per_round[i] for i in range(len(matches_per_ro
 #seen_teams = set()
 #unseen_teams = set(df["HomeTeamCat"].values).union(df["AwayTeamCat"].values)
 
-def selec_mat(combination, N=33):
-    # returns the selection-matrix that selects (a_i, a_j, B_i, B_j)' when
-    # post-multiplied with f_t
-    # f_ijt = selec_mat(i,j,N) * f_t
-    i, j = combination
-    M = np.zeros((4, 2*N))
-    M[:, i] = np.array((1, 0, 0, 0))
-    M[:, j] = np.array((0, 1, 0, 0))
-    M[:, N+i] = np.array((0, 0, 1, 0))
-    M[:, N+j] = np.array((0, 0, 0, 1))
 
-    return M
+def construct_goals_dict():
+    
+    
 
+    get_goals_dict = {}
 
-def construct_selection_mat_dict(n):
-    """Returns a dictionary with keys (home, away)
-     and values the corresponding selection matrix M_ij. 
-     As to not construct them ad-hoc while calculating likelihood """
-    combinations = []
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                combinations.append((i, j))
-    selection_dictionary = dict(
-        zip(combinations, map(selec_mat, combinations)))
-    return selection_dictionary
+    first_round = min(df['round_labels'].values)
+    last_round  = max(df['round_labels'].values)
+    round_numbers = range(first_round, last_round+1)
 
+    for round in round_numbers:
+        for match in matches_per_round.get(round):
+            i, j = match
+            match_results = df[(df["round_labels"] == round) & (
+                df["HomeTeamCat"] == i) & (df["AwayTeamCat"] == j)]
+            home_score = match_results.FTHG.values[0]
+            away_score = match_results.FTAG.values[0]
+            get_goals_dict.update({(i,j,round) : (home_score, away_score) })
+    return get_goals_dict
 
-select_dict = construct_selection_mat_dict(team_amount)   #get this from helper-code
+def construct_participants_dict():
 
+    part_dict = {}
+    for round in set(matches_per_round.keys()):
+        match_list  = matches_per_round.get(round)
+        home_teams = [match[0] for match in match_list]
+        away_teams = [match[1] for match  in match_list]
+        participants = home_teams + away_teams
 
-def link_function(alpha_i, beta_j, delta, alpha_j, beta_i):
-    l1_ij = np.exp(delta + alpha_i - beta_j)
-    l2_ij = np.exp(alpha_j - beta_i)
-    return l1_ij, l2_ij
+        part_dict.update({round: set(participants)})
+    return part_dict
 
 
-def get_goals(i, j, t):
-    """ Returns home_goals, away_goals given two teams (integer category).
-    Returns a string if there exists no match between home and away in round t """
+    # get_goals_dict = {(home, away, round): df[(df["round_labels"] == round) & (
+    #     df["HomeTeamCat"] == home) & (df["AwayTeamCat"] == away)][['FTHG', 'FTAG']].values.flatten() for (home,away) in matches_per_round.get(round) for round in range(first_round, last_round+1)}
 
-    home, away, round = i, j, t
+goal_dict = construct_goals_dict()
+participants_dict = construct_participants_dict()
 
-    # verify team i plays team j in round t
-    matches_played = matches_per_round.get(round)
-    match_exists = (home,away) in matches_played
-    if not match_exists:
-        print(f"Match {(home,away)} in round {round} does not exist ")
-        return "get_goals method failed because MATCH DOESN'T EXIST"
-    else:
-        match = df[(df["round_labels"] == round) & (df["HomeTeamCat"] == home) & (df["AwayTeamCat"] == away)]
-        home_score = match.FTHG.values[0]
-        away_score = match.FTAG.values[0]
-    return home_score, away_score
+# def get_goals(i, j, t):
+#     #
+#     """ Returns home_goals, away_goals given two teams (integer category).
+#     Returns a string if there exists no match between home and away in round t """
 
-def get_home_goals(i,j,t):
-    home_goals, away_goals = get_goals(i,j,t)
-    return home_goals
+#     home, away, round = i, j, t
 
-def get_away_goals(i, j, t):
-    home_goals, away_goals = get_goals(i, j, t)
-    return away_goals
+#     # verify team i plays team j in round t
+#     matches_played = matches_per_round.get(round)
+#     match_exists = (home,away) in matches_played
+#     if not match_exists:
+#         print(f"Match {(home,away)} in round {round} does not exist ")
+#         return "get_goals method failed because MATCH DOESN'T EXIST"
+#     else:
+#         match = df[(df["round_labels"] == round) & (df["HomeTeamCat"] == home) & (df["AwayTeamCat"] == away)]
+#         home_score = match.FTHG.values[0]
+#         away_score = match.FTAG.values[0]
+#     return home_score, away_score
 
-# def update_seen_teams(seen_team):
-#     seen_teams.add(seen_team)
-#     unseen_teams.remove(seen_team)
+# def get_home_goals(i,j,t):
+#     home_goals, away_goals = goal_dict[i,j,t]
+#     return home_goals
 
-# def reset_unseen_and_seen_teams():
-#     return unseen_teams_init, seen_teams_init
+# def get_away_goals(i, j, t):
+#     home_goals, away_goals = goal_dict[i,j,t]
+#     return away_goals
 
-
-
-
-
+ 
 
 
 def set_new_teams_parameters(new_teams, ft): 
@@ -161,15 +171,16 @@ def set_new_teams_parameters(new_teams, ft):
     ft[beta_locs] = 0
     return ft
 def get_f1():
-    return f1
+    return f1_init.copy()
 def update_fijt(fijt,i,j,psi,wijt,t):
     a1, a2, b1, b2, l3, delta = psi
     alpha_i, alpha_j, beta_i, beta_j = fijt
     score = 0
     fijt_updated = fijt 
     
-    x = get_home_goals(i, j, t)
-    y = get_away_goals(i, j, t)
+    # x = get_home_goals(i, j, t)
+    # y = get_away_goals(i, j, t)
+    x, y = goal_dict[i, j, t]
     l3 = lambda_3
     
     score = bivariate_poisson.score(fijt,x, y, l3, delta) #must return a 4x1 vector
@@ -194,12 +205,12 @@ def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):
 
 
 def update_round(ft,psi,w, t): 
-    if(t%100==0):
-        print('updating f_t for round  ', t)
+    # if(t%100==0):
+    #     print('updating f_t for round  ', t)
     #print('ft in UPDATE ROUND:', ft)
     all_teams = set(range(team_amount))  # num_teams is 33
-    participants = df[df["round_labels"] == t].iloc[0].participants
-    participants = set(participants)
+    participants = participants_dict[t] #df[df["round_labels"] == t].iloc[0].participants
+    #participants = set(participants)
     matches_this_round = matches_per_round[t]
     ft_next = ft
     # [  CASE 1  ]
@@ -241,7 +252,7 @@ def update_round(ft,psi,w, t):
     return ft_next 
 
 def construct_w(f1, b1, b2):
-    f1_values = f1.values.reshape((team_amount*2,1))
+    f1_values = get_f1().reshape((team_amount*2,1))
     ones_vec = np.ones((team_amount*2,1))
     diagonal_of_B = np.array(([b1]*team_amount,[b2]*team_amount)).reshape((team_amount*2,1))
 
@@ -249,40 +260,35 @@ def construct_w(f1, b1, b2):
     result = np.multiply(f1_values, rhs)
     return result.reshape(66,)
 
-# def construct_w(f1, B):
-#     f1_values = f1.values.reshape((1,66)) 
-#     ones_vec = np.ones((1,B.shape[0]))
-#     diagonal_B = np.diag(B) 
-#     rhs = ones_vec - diagonal_B
-#     result = np.multiply(f1_values, rhs) #point-wise multiplication of f1*(1-diag(B))
-#     return result
-
-
+ 
 
 
 rounds_in_first_year = np.max(df.round_labels.values[:380]) #in 38 rounds, 380 matches played in first year.
  
 def update_all(f1, psi):   
-    print("running UPDATE ALL")
+    update_all.counter +=1 
+    if (update_all.counter % 100 == 0):
+        print(update_all.counter)
+    #print("running UPDATE ALL")
      
     a1, a2, b1, b2, lambda3, delta = psi    
-    w = construct_w(f1,b1,b2)
+    w = construct_w(get_f1(),b1,b2)
     #make f1-vector the strength-vec of entire first year (first 38 rounds):
-    first_year_strengths = np.multiply(np.ones((f1.shape[0], rounds_in_first_year)), f1.values.reshape((66, 1)))
+    first_year_strengths = np.multiply(np.ones((get_f1().shape[0], rounds_in_first_year)), get_f1().reshape((66, 1)))
 
     
 
     num_rounds = np.max(df["round_labels"].values)
-    ft_total = np.zeros((f1.shape[0], num_rounds  ))
+    ft_total = np.zeros((get_f1().shape[0], num_rounds  ))
     ft_total[:, :38] = first_year_strengths  # [f1,f1,...,f1] for first 37 columns
 
     first_round = rounds_in_first_year 
     rounds = range(first_round, num_rounds)  
     for round in rounds:
         ft = 0 #placeholder
-        print('updating round: ', round)
+        #print('updating round: ', round)
         if round == first_round:
-            ft = f1.values
+            ft = get_f1()
         else:
             ft = ft_total[:,round-1] 
         #print('ft in UPDATE ALL', ft)
@@ -291,16 +297,13 @@ def update_all(f1, psi):
     print("DONE WITH UPDATE ALL. Resetting Unseens and Seen Teams and Proceeding to likelihood calc:  ")
     team_tracker.reset()
     return ft_total
-
-# def construct_omega(f1, B):
-#     #following Koopman/Lit omega is constructed by  w = f1.pointwise(    ( 1-Diag(B)  )    )
-#     diag_B = 1
-#     return 0 
+update_all.counter = 0 
+ 
 
 #start calculating here...
 
 def calc_round_likelihood(all_games_in_round, ft, delta, l3):
-    print('calculating likelihood for round ', all_games_in_round.iloc[0].round_labels)
+    #print('calculating likelihood for round ', all_games_in_round.iloc[0].round_labels)
     temp = np.zeros(all_games_in_round.shape[0])
 
     def game_likelihood(game, ft, delta, l3):
@@ -312,9 +315,8 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
         alpha_i, alpha_j, beta_i, beta_j = ft[selection]
 
         x, y = game["y"]
-        l1 = np.exp(alpha_i - beta_j + delta)
-        l2 = np.exp(alpha_j - beta_i)
-
+        
+        l1, l2 = bivariate_poisson.link_function(alpha_i, alpha_j, beta_i, beta_j, delta)
         game_ll = np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
         return game_ll
     temp = all_games_in_round.apply(game_likelihood, ft = ft, delta =delta, l3 = l3, axis = 1)
@@ -322,26 +324,33 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
 
 
 likelihood_list = []
-def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
+#@CallCountDecorator
+def total_log_like_score_driven(theta, *args): #  (f1, delta, l3, rounds_in_first_year)):
+    total_log_like_score_driven.counter +=1
+    if (total_log_like_score_driven.counter % 10 == 0 ):
+        print("Amount of times calculating total log likelihood = ", total_log_like_score_driven.counter)
     #gets theta-parameters from the optimizer
     a1, a2, b1, b2 = theta #these are the only 4 parameters that need estimations
     #f1 = sd.get_f1()  # is een dataFrame series.
      #f1, l3, delta, rounds_in_first_year = args #are estimated beforehand with Maher
     #using those parameters, gets ft_total from train_score_driven_model
+    f_start, delta, l3, rounds_in_first_year = args
+    f_start = get_f1()
     psi = (a1, a2, b1, b2, l3, delta)
-    ft_total = update_all(f1, psi)
-    print('ft_total succesfully calculated')
+    ft_total = update_all(f_start.copy(), psi)
+    #print('ft_total succesfully calculated')
+    #print("Used params   a1, a2, b1, b2, l3, delta = ", psi)
     #print("ft_total has shape: ", ft_total.shape)
     #print('FT_TOTAL: ', ft_total)
     #calculates the total log likelihood and returns it
-
+    print(f"f1 VECTOR: ", f_start)
     #optimizer optimizes, returns optimal estimated parameter-vector.
 
     first_round_index = rounds_in_first_year 
     last_round = ft_total.shape[1]
 
     total_likelihood = 0
-    print('total_likelihood is starting iteration over rounds: ')
+    #print('total_likelihood is starting iteration over rounds: ')
     for round in range(first_round_index, last_round):
         #retrieve (x,y) score for this round from df
         #retrieve related strength-vector f_round from ft_total
@@ -352,27 +361,50 @@ def total_log_like_score_driven(theta,  f1, delta, l3, rounds_in_first_year):
             all_games_in_round, f_t, delta, l3)
         total_likelihood += round_likelihood
 
-    likelihood_list.append((-1*total_likelihood,(a1,a2,b1,b2),construct_w(f1,b1,b2), ft_total))
+    likelihood_list.append((-1*total_likelihood,(a1,a2,b1,b2),construct_w(get_f1(),b1,b2), ft_total))
 
     minimize=True
     if minimize == True:
         # if optimizer uses minimisation in stead of maximisation.
+        print(f"total log-likelihood: {-1*total_likelihood}")
         return -1*total_likelihood
+    print(f"total log-likelihood: {total_likelihood}")
     return total_likelihood
+
+total_log_like_score_driven.counter = 0
+
+
+def callback_func(xk, convergence):
+    print("Data passed to callback: " + str(xk))
+    print("Optimizer callback count: " + str(callback_func.counter))
+    callback_func.counter += 1
+
+
+
+callback_func.counter = 0
 
 
 def optimizer():
     #theta contains the paramters to optimize: a1,a2,b1,b2
     #args takes additional parameters that won't be optimized:
     #args = (f1, delta_1, lambda_3, rounds_in_first_year)
-    f1 = get_f1()
+    f_start = get_f1()
     print('succesfully retrieved f1 for optimizer')
-    arguments = (f1, delta_1, lambda_3, rounds_in_first_year)
+    #lambda_3 = 0.3
+    arguments = (f_start, delta_1, lambda_3, rounds_in_first_year)
     # a1,a2,b1,b2 = theta
-    theta_ini = [0.1, 0.1, 0.1, 0.1]
+    theta_ini = [0.1, 0.8, 0.6, 0.3]
+    min_bound, max_bound = -0.99, 0.99
+    theta_bounds = np.array([[min_bound, max_bound], [min_bound, max_bound], [
+                      min_bound, max_bound], [min_bound, max_bound]])
     print('starting optimizer: ...')
-    results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args =arguments, method='nelder-mead',options={'xatol': 1e-8, 'disp': True})
-    
+    max_iterations = 300
+    #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
+ 
+
+
+    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=30, tol=0.01, mutation=(
+     0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
     
     # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
     #                                   options=options,
@@ -381,8 +413,20 @@ def optimizer():
     #                                   bounds=boundaries)
     return results
 results = optimizer()
+
 print("DONE")
 
+for i in results:
+    print(i)
 
+print('pickling and saving results and likelihood list as results.pickle and likelihood_list.pickle in ', os.getcwd())
+with open('results.pkl', 'wb') as f:
+    pkl.dump(results, f)
 
+with open('likelihood_list.pkl', 'wb') as f:
+    pkl.dump(likelihood_list, f)
+
+toc = time.perf_counter()
+
+print(f"took {toc-tic} seconds to run")
 # %%

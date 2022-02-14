@@ -19,7 +19,7 @@ ncr = scipy.special.comb
 
 
 if os.getcwd().split('\\')[-1] != 'features':
-    os.chdir("./features")
+    os.chdir(r"C:/Users/XHK\Desktop/thesis_code/paper_reproduction/src/features")
 script_folder = os.getcwd()
 data_folder = r"../../data/interim"
 
@@ -92,7 +92,7 @@ def maher_initialization(first_year_data):
     con1 = {'type': 'eq', 'fun': constraint_alphas}
     con2 = {'type': 'ineq', 'fun': constraint_delta}
     con3 = {'type': 'ineq', 'fun': constraint_gamma}
-    cons = [con1]
+    cons = [con1,con2, con3]
     bound = (-1.0, 1.0)
     boundaries = [(-np.inf, np.inf) if i < length -
                   2 else (0, 1) for i in range(length)]
@@ -135,6 +135,7 @@ def log_likelihood_maher(theta, data, minimize=True):
         total += np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
     #total += 0.1 * np.sum(alphas)
     if minimize == True:
+        print(f"log likelihood = {total} and when resturned to optimizer it is: {-1*total}")
         return -1*total
     return total
 
@@ -180,9 +181,9 @@ df['f1'] = f_one
 
 print('trying to pickle df_initialized, saving in data/processed')
 os.chdir('../interim')
-df.to_pickle('df_initialized.pkl')
+df.to_pickle('df_initialized2.pkl')
 print('testing pickling')
-pd.read_pickle("df_initialized.pkl")
+pd.read_pickle("df_initialized2.pkl")
 
 
 print('done producing maher_initialization, saved in ', os.getcwd())
