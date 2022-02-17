@@ -44,8 +44,9 @@ def get_initialized_data(data_location = data_path, data_type = ".pkl", data_nam
 
 df = get_initialized_data()
 
-use_small_data = True
-if use_small_data == True: 
+use_small_data = False
+if use_small_data == True:
+    print("USING SMALLER DATASET FOR TESTING")
     df = df.iloc[:700]
 
 
@@ -62,12 +63,12 @@ f1_size = (team_amount * 2) + 2#+2    f_t just consists of the time-varying team
 
 f1_init = df['f1'][:f1_size].values
 #lambda_3 = f1.values[-2]  # noemde dit eerst gamma_1, maar is bs
-delta_1, lambda_3 = f1[-1], f1[-2]
+delta_1, lambda_3 = f1_init[-1], f1_init[-2]
 f1_init = f1_init[:f1_size-2] #ignores the delta and lambda_3
 
 
-mapping = df['mapping'].iloc[0] #dictinary that maps numbers to teams.
- 
+mapping = df['mapping'].iloc[0] #dictinary that maps    team_numbers -> teamnames.
+inv_mapping = {v: k for k, v in mapping.items()}  #maps team_names -> team_numbers
 unseen_teams_init = set(df['absentees'].iloc[0])
 seen_teams_init = set(df.iloc[0].participants) 
 
@@ -87,6 +88,9 @@ matches_per_round = {i+1: matches_per_round[i] for i in range(len(matches_per_ro
 #seen_teams = set()
 #unseen_teams = set(df["HomeTeamCat"].values).union(df["AwayTeamCat"].values)
 
+def constrain_alphas(alpha_vector):
+    #constrains alphas to summing to 1 ??
+    return alpha_vector/(alpha_vector.sum(axis=0))
 
 def construct_goals_dict():
     
@@ -247,7 +251,6 @@ def update_round(ft,psi,w, t):
             ft_next[selection] = update_non_playing_team(team, ft_team, psi, w_m )
     
     
-
     
     return ft_next 
 
@@ -291,6 +294,9 @@ def update_all(f1, psi):
             ft = get_f1()
         else:
             ft = ft_total[:,round-1] 
+            #constrains the alpha-values to make them sum to 1, avoiding overflows in likelihood.
+            alphas = ft[:team_amount]
+            alphas[:team_amount] = constrain_alphas(alphas)
         #print('ft in UPDATE ALL', ft)
         ft_next = update_round(ft, psi, w, round) 
         ft_total[:,round] = ft_next
@@ -343,7 +349,7 @@ def total_log_like_score_driven(theta, *args): #  (f1, delta, l3, rounds_in_firs
     #print("ft_total has shape: ", ft_total.shape)
     #print('FT_TOTAL: ', ft_total)
     #calculates the total log likelihood and returns it
-    print(f"f1 VECTOR: ", f_start)
+    #print(f"f1 VECTOR: ", f_start)
     #optimizer optimizes, returns optimal estimated parameter-vector.
 
     first_round_index = rounds_in_first_year 
@@ -398,14 +404,12 @@ def optimizer():
     theta_bounds = np.array([[min_bound, max_bound], [min_bound, max_bound], [
                       min_bound, max_bound], [min_bound, max_bound]])
     print('starting optimizer: ...')
-    max_iterations = 300
+    max_iterations = 500
     #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
  
+    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
+        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
 
-
-    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=30, tol=0.01, mutation=(
-     0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
-    
     # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
     #                                   options=options,
     #                                   method='SLSQP',
@@ -427,6 +431,25 @@ with open('likelihood_list.pkl', 'wb') as f:
     pkl.dump(likelihood_list, f)
 
 toc = time.perf_counter()
+
+likelihoods = [i[0] for i in likelihood_list]
+psis = [i[1] for i in likelihood_list]
+ft_totals = [i[3] for i in likelihood_list]
+
+#laat het verloop van a1,a2,b1,b2 estimates zien
+dfpsis = pd.DataFrame(np.array(psis))
+dfpsis.columns = ["a1", "a2", "b1", "b2"]
+dfpsis.iloc[-200:,:].plot()
+
+
+#check Barcelona - Real Madrid strengths-verloop: 
+f  =  ft_totals 
+lastf = f[-1]
+last = pd.DataFrame(lastf)
+barca = inv_mapping.get('Barcelona')     #=5
+real = inv_mapping.get('Real Madrid')   #= 21 
+barca_madr = last.iloc[[barca, real]]    
+barca_madr.T.plot()
 
 print(f"took {toc-tic} seconds to run")
 # %%
