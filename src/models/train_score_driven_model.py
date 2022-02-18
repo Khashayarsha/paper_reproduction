@@ -185,7 +185,7 @@ def update_fijt(fijt,i,j,psi,wijt,t):
     # x = get_home_goals(i, j, t)
     # y = get_away_goals(i, j, t)
     x, y = goal_dict[i, j, t]
-    l3 = lambda_3
+    
     
     score = bivariate_poisson.score(fijt,x, y, l3, delta) #must return a 4x1 vector
     
@@ -197,7 +197,7 @@ def update_fijt(fijt,i,j,psi,wijt,t):
     return fijt_updated
 
 def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):  
-    a1,a2,b1,b2,_l3,_delta = psi
+    a1,a2,b1,b2,l3,delta = psi
     w_m_alpha, w_m_beta = w_m 
     alpha_mt, beta_mt = ft_team_nr
 
@@ -274,7 +274,7 @@ def update_all(f1, psi):
         print(update_all.counter)
     #print("running UPDATE ALL")
      
-    a1, a2, b1, b2, lambda3, delta = psi    
+    a1, a2, b1, b2, l3, delta = psi    
     w = construct_w(get_f1(),b1,b2)
     #make f1-vector the strength-vec of entire first year (first 38 rounds):
     first_year_strengths = np.multiply(np.ones((get_f1().shape[0], rounds_in_first_year)), get_f1().reshape((66, 1)))
@@ -304,7 +304,7 @@ def update_all(f1, psi):
         #print('ft in UPDATE ALL', ft)
         ft_next = update_round(ft, psi, w, round) 
         ft_total[:,round] = ft_next
-    print("DONE WITH UPDATE ALL. Resetting Unseens and Seen Teams and Proceeding to likelihood calc:  ")
+    #print("DONE WITH UPDATE ALL. Resetting Unseens and Seen Teams and Proceeding to likelihood calc:  ")
     team_tracker.reset()
     return ft_total
 update_all.counter = 0 
@@ -337,14 +337,14 @@ likelihood_list = []
 #@CallCountDecorator
 def total_log_like_score_driven(theta, *args): #  (f1, delta, l3, rounds_in_first_year)):
     total_log_like_score_driven.counter +=1
-    if (total_log_like_score_driven.counter % 10 == 0 ):
+    if (total_log_like_score_driven.counter % 100 == 0 ):
         print("Amount of times calculating total log likelihood = ", total_log_like_score_driven.counter)
     #gets theta-parameters from the optimizer
-    a1, a2, b1, b2 = theta #these are the only 4 parameters that need estimations
+    a1, a2, b1, b2, l3, delta = theta #these are the only 6 parameters that need estimations
     #f1 = sd.get_f1()  # is een dataFrame series.
      #f1, l3, delta, rounds_in_first_year = args #are estimated beforehand with Maher
     #using those parameters, gets ft_total from train_score_driven_model
-    f_start, delta, l3, rounds_in_first_year = args
+    f_start, rounds_in_first_year = args
     f_start = get_f1()
     psi = (a1, a2, b1, b2, l3, delta)
     ft_total = update_all(f_start.copy(), psi)
@@ -371,12 +371,12 @@ def total_log_like_score_driven(theta, *args): #  (f1, delta, l3, rounds_in_firs
             all_games_in_round, f_t, delta, l3)
         total_likelihood += round_likelihood
 
-    likelihood_list.append((-1*total_likelihood,(a1,a2,b1,b2),construct_w(get_f1(),b1,b2), ft_total))
+    likelihood_list.append((-1*total_likelihood,(a1,a2,b1,b2, l3,delta),construct_w(get_f1(),b1,b2), ft_total))
 
     minimize=True
     if minimize == True:
         # if optimizer uses minimisation in stead of maximisation.
-        print(f"total log-likelihood: {-1*total_likelihood}")
+        #print(f"total log-likelihood: {-1*total_likelihood}")
         return -1*total_likelihood
     print(f"total log-likelihood: {total_likelihood}")
     return total_likelihood
@@ -401,7 +401,7 @@ def optimizer():
     f_start = get_f1()
     print('succesfully retrieved f1 for optimizer')
     l3_start, delta_start = lambda_3, delta_1
-    arguments = (f_start, delta_start, l3_start, rounds_in_first_year)
+    arguments = (f_start, rounds_in_first_year)
     # a1,a2,b1,b2, l3, delta = theta
     theta_ini = [0.1, 0.8, 0.6, 0.3, 0.3, 0.3]
     min_bound, max_bound = -0.99, 0.99
@@ -412,10 +412,10 @@ def optimizer():
     theta_bounds = np.array([a_bounds, a_bounds, b_bounds, b_bounds, l3_bounds, delta_bounds])
     print('starting optimizer: ...')
     max_iterations = 500
-    results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
+    #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
  
-    #results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
-        #0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
+    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
+        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
 
     # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
     #                                   options=options,
@@ -445,7 +445,7 @@ ft_totals = [i[3] for i in likelihood_list]
 
 #laat het verloop van a1,a2,b1,b2 estimates zien
 dfpsis = pd.DataFrame(np.array(psis))
-dfpsis.columns = ["a1", "a2", "b1", "b2"]
+dfpsis.columns = ["a1", "a2", "b1", "b2" ,"lambda3", "delta"]
 dfpsis.iloc[-200:,:].plot()
 
 

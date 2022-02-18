@@ -5,9 +5,11 @@ import scipy.special
 factorial = scipy.special.factorial
 ncr = scipy.special.comb
  
-def link_function(ai, aj, bi, bj, delta, thresh_min = 0.0001, thresh_max = 10):
-
-    l1, l2 = np.clip([np.exp(ai - bj + delta), np.exp(aj - bi)], a_min=thresh_min, a_max=thresh_max)
+def link_function(ai, aj, bi, bj, delta, thresh_min = -3.22, thresh_max = 3.22):
+    # 0.04 and 3.22 are log(e^(1/25)) and log(25)
+    exponent = np.clip([(ai - bj + delta), (aj-bi)], a_min = thresh_min, a_max = thresh_max)
+    l1, l2 = np.e**exponent
+    #np.clip([np.exp(ai - bj + delta), np.exp(aj - bi)], a_min=thresh_min, a_max=thresh_max)
     return l1, l2
 
 
