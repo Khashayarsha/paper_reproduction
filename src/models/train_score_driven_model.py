@@ -264,7 +264,7 @@ def construct_w(f1, b1, b2):
     return result.reshape(66,)
 
  
-
+alph, betas, alphas_before = [],[],[] 
 
 rounds_in_first_year = np.max(df.round_labels.values[:380]) #in 38 rounds, 380 matches played in first year.
  
@@ -294,9 +294,13 @@ def update_all(f1, psi):
             ft = get_f1()
         else:
             ft = ft_total[:,round-1] 
-            #constrains the alpha-values to make them sum to 1, avoiding overflows in likelihood.
-            alphas = ft[:team_amount]
-            alphas[:team_amount] = constrain_alphas(alphas)
+            # #constrains the alpha-values to make them sum to 1, avoiding overflows in likelihood.
+            # alphas = ft[:team_amount]
+            # alphas_before.append(alphas.sum())
+            # alphas[:team_amount] = constrain_alphas(alphas)
+            # print(f"max of alphas = ", ft[:33].max())
+            # print(f"max of betas = ", ft[33:].max())
+            # betas.append(ft[33:].sum())
         #print('ft in UPDATE ALL', ft)
         ft_next = update_round(ft, psi, w, round) 
         ft_total[:,round] = ft_next
@@ -396,19 +400,22 @@ def optimizer():
     #args = (f1, delta_1, lambda_3, rounds_in_first_year)
     f_start = get_f1()
     print('succesfully retrieved f1 for optimizer')
-    #lambda_3 = 0.3
-    arguments = (f_start, delta_1, lambda_3, rounds_in_first_year)
-    # a1,a2,b1,b2 = theta
-    theta_ini = [0.1, 0.8, 0.6, 0.3]
+    l3_start, delta_start = lambda_3, delta_1
+    arguments = (f_start, delta_start, l3_start, rounds_in_first_year)
+    # a1,a2,b1,b2, l3, delta = theta
+    theta_ini = [0.1, 0.8, 0.6, 0.3, 0.3, 0.3]
     min_bound, max_bound = -0.99, 0.99
-    theta_bounds = np.array([[min_bound, max_bound], [min_bound, max_bound], [
-                      min_bound, max_bound], [min_bound, max_bound]])
+    a_bounds = [-0.99, 0.99]
+    b_bounds = [-0.99,0.99]
+    l3_bounds = [0.00001, 0.999]
+    delta_bounds = [-1, 1]
+    theta_bounds = np.array([a_bounds, a_bounds, b_bounds, b_bounds, l3_bounds, delta_bounds])
     print('starting optimizer: ...')
     max_iterations = 500
-    #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
+    results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
  
-    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
-        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
+    #results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
+        #0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
 
     # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
     #                                   options=options,
