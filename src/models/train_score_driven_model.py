@@ -403,25 +403,24 @@ def optimizer():
     l3_start, delta_start = lambda_3, delta_1
     arguments = (f_start, rounds_in_first_year)
     # a1,a2,b1,b2, l3, delta = theta
-    theta_ini = [0.1, 0.8, 0.6, 0.3, 0.3, 0.3]
+    theta_ini = [-0.17, 0.165, -0.97, 0.98, 0.02, 0.26]
     min_bound, max_bound = -0.99, 0.99
-    a_bounds = [-0.99, 0.99]
-    b_bounds = [-0.99,0.99]
-    l3_bounds = [0.00001, 0.999]
+    a_bounds = [-4, 4]
+    b_bounds = [-4,4]
+    l3_bounds = [0, 1]
     delta_bounds = [-1, 1]
     theta_bounds = np.array([a_bounds, a_bounds, b_bounds, b_bounds, l3_bounds, delta_bounds])
     print('starting optimizer: ...')
     max_iterations = 500
     #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
  
-    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
-        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
+    #results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
+        #0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
 
-    # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
-    #                                   options=options,
-    #                                   method='SLSQP',
-    #                                   constraints=cons,
-    #                                   bounds=boundaries)
+    results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
+                                        method='SLSQP',
+                                       constraints=(),
+                                       bounds=theta_bounds)
     return results
 results = optimizer()
 
@@ -431,32 +430,32 @@ for i in results:
     print(i)
 
 print('pickling and saving results and likelihood list as results.pickle and likelihood_list.pickle in ', os.getcwd())
-with open('results.pkl', 'wb') as f:
-    pkl.dump(results, f)
+# with open('results.pkl', 'wb') as f:
+#     pkl.dump(results, f)
 
-with open('likelihood_list.pkl', 'wb') as f:
-    pkl.dump(likelihood_list, f)
+# with open('likelihood_list.pkl', 'wb') as f:
+#     pkl.dump(likelihood_list, f)
 
 toc = time.perf_counter()
 
-likelihoods = [i[0] for i in likelihood_list]
-psis = [i[1] for i in likelihood_list]
-ft_totals = [i[3] for i in likelihood_list]
+# likelihoods = [i[0] for i in likelihood_list]
+# psis = [i[1] for i in likelihood_list]
+# ft_totals = [i[3] for i in likelihood_list]
 
-#laat het verloop van a1,a2,b1,b2 estimates zien
-dfpsis = pd.DataFrame(np.array(psis))
-dfpsis.columns = ["a1", "a2", "b1", "b2" ,"lambda3", "delta"]
-dfpsis.iloc[-200:,:].plot()
+# #laat het verloop van a1,a2,b1,b2 estimates zien
+# dfpsis = pd.DataFrame(np.array(psis))
+# dfpsis.columns = ["a1", "a2", "b1", "b2" ,"lambda3", "delta"]
+# dfpsis.iloc[-200:,:].plot()
 
 
-#check Barcelona - Real Madrid strengths-verloop: 
-f  =  ft_totals 
-lastf = f[-1]
-last = pd.DataFrame(lastf)
-barca = inv_mapping.get('Barcelona')     #=5
-real = inv_mapping.get('Real Madrid')   #= 21 
-barca_madr = last.iloc[[barca, real]]    
-barca_madr.T.plot()
+# #check Barcelona - Real Madrid strengths-verloop: 
+# f  =  ft_totals 
+# lastf = f[-1]
+# last = pd.DataFrame(lastf)
+# barca = inv_mapping.get('Barcelona')     #=5
+# real = inv_mapping.get('Real Madrid')   #= 21 
+# barca_madr = last.iloc[[barca, real]]    
+# barca_madr.T.plot()
 
 print(f"took {toc-tic} seconds to run")
 # %%
