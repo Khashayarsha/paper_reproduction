@@ -294,10 +294,10 @@ def update_all(f1, psi):
             ft = get_f1()
         else:
             ft = ft_total[:,round-1] 
-            # #constrains the alpha-values to make them sum to 1, avoiding overflows in likelihood.
+             #constrains the alpha-values to make them sum to 1, avoiding overflows in likelihood.
             # alphas = ft[:team_amount]
             # alphas_before.append(alphas.sum())
-            # alphas[:team_amount] = constrain_alphas(alphas)
+            # alphas = constrain_alphas(alphas)
             # print(f"max of alphas = ", ft[:33].max())
             # print(f"max of betas = ", ft[33:].max())
             # betas.append(ft[33:].sum())
@@ -404,7 +404,7 @@ def optimizer():
     arguments = (f_start, rounds_in_first_year)
     # a1,a2,b1,b2, l3, delta = theta
     theta_ini = [-0.17, 0.165, -0.97, 0.98, 0.02, 0.26]
-    min_bound, max_bound = -0.99, 0.99
+    #min_bound, max_bound = -0.99, 0.99
     a_bounds = [-4, 4]
     b_bounds = [-4,4]
     l3_bounds = [0, 1]
@@ -425,9 +425,7 @@ def optimizer():
 results = optimizer()
 
 print("DONE")
-
-for i in results:
-    print(i)
+print(results)
 
 print('pickling and saving results and likelihood list as results.pickle and likelihood_list.pickle in ', os.getcwd())
 # with open('results.pkl', 'wb') as f:
@@ -438,24 +436,72 @@ print('pickling and saving results and likelihood list as results.pickle and lik
 
 toc = time.perf_counter()
 
-# likelihoods = [i[0] for i in likelihood_list]
-# psis = [i[1] for i in likelihood_list]
-# ft_totals = [i[3] for i in likelihood_list]
+likelihoods = [i[0] for i in likelihood_list]
+psis = [i[1] for i in likelihood_list]
+ft_totals = [i[3] for i in likelihood_list]
 
-# #laat het verloop van a1,a2,b1,b2 estimates zien
-# dfpsis = pd.DataFrame(np.array(psis))
-# dfpsis.columns = ["a1", "a2", "b1", "b2" ,"lambda3", "delta"]
-# dfpsis.iloc[-200:,:].plot()
+#laat het verloop van a1,a2,b1,b2 estimates zien
+dfpsis = pd.DataFrame(np.array(psis))
+dfpsis.columns = ["a1", "a2", "b1", "b2" ,"lambda3", "delta"]
+dfpsis.iloc[-200:,:].plot()
 
 
-# #check Barcelona - Real Madrid strengths-verloop: 
-# f  =  ft_totals 
-# lastf = f[-1]
-# last = pd.DataFrame(lastf)
-# barca = inv_mapping.get('Barcelona')     #=5
-# real = inv_mapping.get('Real Madrid')   #= 21 
-# barca_madr = last.iloc[[barca, real]]    
-# barca_madr.T.plot()
+#check Barcelona - Real Madrid strengths-verloop: 
+f  =  ft_totals 
+lastf = f[-1]
+last = pd.DataFrame(lastf)
+barca = inv_mapping.get('Barcelona')     #=5
+real = inv_mapping.get('Real Madrid')   #= 21 
+barca_madr = last.iloc[[barca, real]]    
+barca_madr.T.plot()
+
+final_lambda, final_delta  = psis[-1][-2], psis[-1][-1]
+
+def add_strengths(round_group):
+    round_group.ai = round_group.round_labels
+    round_strengths = lastf[:,round]
+
+
+def add_strength_columns_to_df(df, lastf, final_lambda, final_delta):
+    df["ai aj bi bj lambda delta".split()] = 'nan'
+    team_amount = lastf.shape[0]/2
+    for round in set(df.round_labels):
+        for match_row in df[df.round_labels == round].values:
+            home, away = match_row.HomeTeamCat, match_row.AwayTeamCat 
+            #match_row[]lastf[[home, away, home+team_amount, away+team_amount],round]
+
+
+def get_ai_aj_etc(row, lastf):
+    home_team_cat, away_team_cat,  round = row.AwayTeamCat, row.HomeTeamCat, row.round_labels
+    team_amount = lastf.shape[0]/2
+    selection = [home_team_cat, away_team_cat, home_team_cat+team_amount, away_team_cat + team_amount]
+    selection = [int(i) for i in selection]
+    print(f"selection {selection}")
+    ai,aj,bi,bj = lastf[selection,round-1]
+    print(ai, aj, bi, bj )
+    return np.array((ai, aj, bi, bj))
+def create_strength_columns(df, lastf, final_lambda, final_delta):
+    ai, aj, bi, bj, fin_lamn, fin_delt = [],[],[],[], [], []
+    for i in df.index:
+        a,b,c,d = get_ai_aj_etc(df.iloc[i], lastf)
+        ai.append(a)
+        aj.append(b)
+        bi.append(c)
+        bj.append(d)
+        fin_lamn.append(final_lambda)
+        fin_delt.append(final_delta)
+    return ai, aj, bi, bj, fin_lamn, fin_delt
+
+
+df["ai aj bi bj lambda delta".split()] = 'nan'
+ai, aj, bi, bj, lambd, delt  = create_strength_columns(df, lastf, final_lambda, final_delta)
+df['ai'], df['aj'], df['bi'], df['bj'], df['lambda'], df['delta'] = ai, aj, bi, bj, lambd, delt
+
+
+with open('df_trained.pkl', 'wb') as f:
+     pkl.dump(df, f)
+
+
 
 print(f"took {toc-tic} seconds to run")
 # %%
