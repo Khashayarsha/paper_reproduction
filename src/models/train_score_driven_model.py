@@ -163,6 +163,7 @@ participants_dict = construct_participants_dict()
 
 def set_new_teams_parameters(new_teams, ft): 
     #initializes strenghts and defences to 0 for newly-appeared teams
+    f = ft.copy()
     new_teams = list(new_teams)
     alpha_locs = new_teams
     beta_locs  = np.array(new_teams) + team_amount
@@ -171,23 +172,24 @@ def set_new_teams_parameters(new_teams, ft):
     #print('alpha locs: ', alpha_locs)
     #print('beta_locs: ', beta_locs)
 
-    ft[alpha_locs] = 0
-    ft[beta_locs] = 0
-    return ft
+    f[alpha_locs] = 0
+    f[beta_locs] = 0
+    return f
 def get_f1():
     return f1_init.copy()
+
 def update_fijt(fijt,i,j,psi,wijt,t):
     a1, a2, b1, b2, l3, delta = psi
-    alpha_i, alpha_j, beta_i, beta_j = fijt
+    alpha_i, alpha_j, beta_i, beta_j = fijt.copy()
     score = 0
-    fijt_updated = fijt 
+    fijt_updated = fijt.copy() 
     
     # x = get_home_goals(i, j, t)
     # y = get_away_goals(i, j, t)
     x, y = goal_dict[i, j, t]
     
     
-    score = bivariate_poisson.score(fijt,x, y, l3, delta) #must return a 4x1 vector
+    score = bivariate_poisson.score(fijt.copy(),x, y, l3, delta) #must return a 4x1 vector
     
 
     Bij = np.diag([b1,b1,b2,b2])
