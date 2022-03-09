@@ -196,6 +196,12 @@ def update_fijt(fijt,i,j,psi,wijt,t):
     Aij = np.diag([a1,a1,a2,a2])
 
     fijt_updated = wijt + Bij@fijt + Aij@score  
+    # alpha_i_next =  wijt[0] + b1 *fijt[0] + a1 * score[0]
+    # alpha_j_next =  wijt[1] +b1 *fijt[1] +a1 * score[1]
+    # beta_i_next =   wijt[2] +b2*fijt[2] +a2 * score[2]
+    # beta_j_next =   wijt[3] +b2*fijt[3] +a2 * score[3]
+    
+    # fijt_updated = np.array([alpha_i_next, alpha_j_next, beta_i_next, beta_j_next]).T
     return fijt_updated
 
 def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):  
@@ -205,6 +211,9 @@ def update_non_playing_team(team_nr, ft_team_nr,psi,w_m ):
 
     alpha_mt_next = w_m_alpha + b1*alpha_mt
     beta_mt_next = w_m_beta + b2*beta_mt
+
+    #alpha_mt_next = alpha_mt
+    #beta_mt_next = beta_mt
 
     return np.array([alpha_mt_next, beta_mt_next]) #.reshape((2,1))
     
@@ -218,7 +227,7 @@ def update_round(ft,psi,w, t):
     participants = participants_dict[t] #df[df["round_labels"] == t].iloc[0].participants
     #participants = set(participants)
     matches_this_round = matches_per_round[t]
-    ft_next = ft
+    ft_next = ft.copy() 
     # [  CASE 1  ]
     #new teams entering competition in this round
     
@@ -263,7 +272,7 @@ def construct_w(f1, b1, b2):
 
     rhs = ones_vec - diagonal_of_B 
     result = np.multiply(f1_values, rhs)
-    return result.reshape(66,)
+    return result.reshape(team_amount*2,) #used to be (66,)
 
  
 alph, betas, alphas_before = [],[],[] 
@@ -329,7 +338,7 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
         x, y = game["y"]
         
         l1, l2 = bivariate_poisson.link_function(alpha_i, alpha_j, beta_i, beta_j, delta)
-        game_ll = np.log(bivariate_poisson.pmf(x, y, l1, l2, l3))
+        game_ll = bivariate_poisson.pmf(x, y, l1, l2, l3, log=True)
         return game_ll
     temp = all_games_in_round.apply(game_likelihood, ft = ft, delta =delta, l3 = l3, axis = 1)
     return temp.sum(axis=0)
@@ -375,12 +384,13 @@ def total_log_like_score_driven(theta, *args): #  (f1, delta, l3, rounds_in_firs
 
     likelihood_list.append((-1*total_likelihood,(a1,a2,b1,b2, l3,delta),construct_w(get_f1(),b1,b2), ft_total))
 
-    minimize=True
+    minimize=False
     if minimize == True:
         # if optimizer uses minimisation in stead of maximisation.
         #print(f"total log-likelihood: {-1*total_likelihood}")
-        return -1*total_likelihood
-    print(f"total log-likelihood: {total_likelihood}")
+        return -1*total_likelihood 
+
+    print(f"maximizing total log-likelihood: f(x) = {total_likelihood}")
     return total_likelihood
 
 total_log_like_score_driven.counter = 0
@@ -408,23 +418,58 @@ def optimizer():
     theta_ini = [-0.17, 0.165, -0.97, 0.98, 0.02, 0.26]
     #min_bound, max_bound = -0.99, 0.99
     a_bounds = [-4, 4]
-    b_bounds = [-4,4]
+    b_bounds = [-4, 4]
     l3_bounds = [0, 1]
-    delta_bounds = [-1, 1]
+    delta_bounds = [0, 1]
     theta_bounds = np.array([a_bounds, a_bounds, b_bounds, b_bounds, l3_bounds, delta_bounds])
     print('starting optimizer: ...')
     max_iterations = 500
     #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
  
-    #results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=max_iterations, popsize=15, tol=0.01, mutation=(
-        #0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
+    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=7, popsize=10, tol=0.01, mutation=(
+        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
 
-    results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
-                                        method='SLSQP',
-                                       constraints=(),
-                                       bounds=theta_bounds)
+    # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
+    #                                     method='SLSQP',
+    #                                    constraints=(),
+    #                                    bounds=theta_bounds)
     return results
 results = optimizer()
+
+
+def optimizer_double_poisson():
+    #theta contains the paramters to optimize: a1,a2,b1,b2
+    #args takes additional parameters that won't be optimized:
+    #args = (f1, delta_1, lambda_3, rounds_in_first_year)
+    f_start = get_f1()
+    print('succesfully retrieved f1 for optimizer')
+    l3_start, delta_start = lambda_3, delta_1
+    arguments = (f_start, rounds_in_first_year)
+    # a1,a2,b1,b2, l3, delta = theta
+    theta_ini = [-0.17, 0.165, -0.97, 0.98,  0.26]
+    #min_bound, max_bound = -0.99, 0.99
+    a_bounds = [-4, 4]
+    b_bounds = [-4, 4]
+     
+    delta_bounds = [0, 1]
+    theta_bounds = np.array(
+        [a_bounds, a_bounds, b_bounds, b_bounds,  delta_bounds])
+    print('starting optimizer: ...')
+    max_iterations = 500
+    #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
+
+    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=7, popsize=10, tol=0.01, mutation=(
+        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
+
+    # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
+    #                                     method='SLSQP',
+    #                                    constraints=(),
+    #                                    bounds=theta_bounds)
+    return results
+
+
+results = optimizer()
+
 
 print("DONE")
 print(results)
