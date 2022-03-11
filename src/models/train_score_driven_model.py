@@ -15,7 +15,7 @@ import time
 
 from decorators import CallCountDecorator
 
-np.seterr(over='raise')
+#np.seterr(over='raise')
 os.chdir(r"c:/Users/XHK/Desktop/thesis_code/paper_reproduction/src/models/")
 print(f'current directory = {os. getcwd()}')
 #os.chdir('./src/models')
@@ -415,10 +415,10 @@ def optimizer():
     l3_start, delta_start = lambda_3, delta_1
     arguments = (f_start, rounds_in_first_year)
     # a1,a2,b1,b2, l3, delta = theta
-    theta_ini = [-0.17, 0.165, -0.97, 0.98, 0.02, 0.26]
+    theta_ini = [-0.3, 0.4, -0.5, 0.5, 0.02, 0.1]
     #min_bound, max_bound = -0.99, 0.99
-    a_bounds = [-4, 4]
-    b_bounds = [-4, 4]
+    a_bounds = [-1, 1]
+    b_bounds = [-1, 1]
     l3_bounds = [0, 1]
     delta_bounds = [0, 1]
     theta_bounds = np.array([a_bounds, a_bounds, b_bounds, b_bounds, l3_bounds, delta_bounds])
@@ -426,46 +426,21 @@ def optimizer():
     max_iterations = 500
     #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
  
-    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=7, popsize=10, tol=0.01, mutation=(
-        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
+    # results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=7, popsize=10, tol=0.01, mutation=(
+    #     0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
 
     # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
     #                                     method='SLSQP',
     #                                    constraints=(),
     #                                    bounds=theta_bounds)
+
+    results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
+                                         method='BFGS')
     return results
 results = optimizer()
 
 
-def optimizer_double_poisson():
-    #theta contains the paramters to optimize: a1,a2,b1,b2
-    #args takes additional parameters that won't be optimized:
-    #args = (f1, delta_1, lambda_3, rounds_in_first_year)
-    f_start = get_f1()
-    print('succesfully retrieved f1 for optimizer')
-    l3_start, delta_start = lambda_3, delta_1
-    arguments = (f_start, rounds_in_first_year)
-    # a1,a2,b1,b2, l3, delta = theta
-    theta_ini = [-0.17, 0.165, -0.97, 0.98,  0.26]
-    #min_bound, max_bound = -0.99, 0.99
-    a_bounds = [-4, 4]
-    b_bounds = [-4, 4]
-     
-    delta_bounds = [0, 1]
-    theta_bounds = np.array(
-        [a_bounds, a_bounds, b_bounds, b_bounds,  delta_bounds])
-    print('starting optimizer: ...')
-    max_iterations = 500
-    #results = scipy.optimize.dual_annealing(total_log_like_score_driven,  args=arguments, no_local_search = False,  x0=theta_ini, bounds=theta_bounds, maxiter=max_iterations)#, callback=callback_func) #, options={'disp': True})  # , options={'xatol': 1e-8, 'disp': True})
 
-    results = scipy.optimize.differential_evolution(total_log_like_score_driven, bounds=theta_bounds, args=arguments, strategy='best1bin', maxiter=7, popsize=10, tol=0.01, mutation=(
-        0.5, 1), recombination=0.7, seed=None, callback=callback_func, disp=True, polish=True, init='latinhypercube', atol=0, updating='immediate', workers=1, constraints=())
-
-    # results = scipy.optimize.minimize(total_log_like_score_driven, theta_ini, args=arguments,
-    #                                     method='SLSQP',
-    #                                    constraints=(),
-    #                                    bounds=theta_bounds)
-    return results
 
 
 results = optimizer()
