@@ -336,6 +336,7 @@ def calc_round_likelihood(all_games_in_round, ft, delta, l3):
         alpha_i, alpha_j, beta_i, beta_j = ft[selection]
 
         x, y = game["y"]
+        #print(f"x and y: {x}, {y},  in game: {game}")
         
         l1, l2 = bivariate_poisson.link_function(alpha_i, alpha_j, beta_i, beta_j, delta)
         game_ll = bivariate_poisson.pmf(x, y, l1, l2, l3, log=True)

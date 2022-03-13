@@ -66,8 +66,14 @@ def link_function(ai, aj, bi, bj, delta):  #M's formulering
 #         # + 2000 #= np.log(first*second)    np.log(first) + np.log(second)
 #         return np.log(first) + np.log(second ) #+ np.log(second )
 #     return first*second
-def pmf(l1, l2, l3, x, y, log = False):  # M.'s formulering
+def pmf(x, y,l1, l2, l3,  log = False):  # M.'s formulering
+    print(f"x,y before int-ing: {x},{y} of types {type(x), type(y)}")
     x,y = int(x), int(y)
+
+    print(f"x,y after int-ing: {x},{y} of types {type(x), type(y)}")
+
+    if x < 0 or y < 0:
+        print("ERROR, NEGATIVE VALUE FOR GOALS DETECTED IN BIV_POISSON.PMF")
     result = 0
     product1 = math.exp(-(l1+l2+l3)) * ((l1**x) /
                                         math.factorial(x)) * ((l2**y)/math.factorial(y))
